@@ -7,13 +7,11 @@ import time
 import threading
 import cgi
 import shutil
-import sqlite3
 from urllib.parse import urlparse, parse_qs
 
 PORT = 8000
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_FILE = os.path.join(BASE_DIR, "database.db")
-JSON_FILE = os.path.join(BASE_DIR, "database.json")  # 用于首次迁移
+DB_FILE = os.path.join(BASE_DIR, "database.json")
 UPLOAD_URL = "uploads"
 VIDEO_URL = "video"
 PDF_URL = "pdf"
@@ -30,212 +28,13 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(VIDEO_DIR, exist_ok=True)
 os.makedirs(PDF_DIR, exist_ok=True)
 
-# ─── 动态 SQLite 工具函数 ───────────────────────────────────
-def get_db():
-    """获取 SQLite 连接（线程安全，每次调用新建连接）"""
-    conn = sqlite3.connect(DB_FILE, timeout=10)
-    conn.execute('PRAGMA journal_mode=WAL')
-    conn.execute('PRAGMA foreign_keys=ON')
-    conn.row_factory = sqlite3.Row
-    return conn
+# 初始化数据库
+if not os.path.exists(DB_FILE):
+    with open(DB_FILE, 'w', encoding='utf-8') as f:
+        json.dump({}, f)
 
-def _infer_type(val):
-    """推断 SQLite 列数据类型"""
-    if isinstance(val, bool):
-        return 'INTEGER'
-    if isinstance(val, int):
-        return 'INTEGER'
-    if isinstance(val, float):
-        return 'REAL'
-    return 'TEXT'
-
-def _to_sqlite_val(val):
-    """将 Python 值转换为 SQLite 可存储的值"""
-    if val is None:
-        return None
-    if isinstance(val, bool):
-        return 1 if val else 0
-    if isinstance(val, (int, float, str)):
-        return val
-    # 数组、字典 → JSON 字符串
-    return json.dumps(val, ensure_ascii=False)
-
-def _from_sqlite_row(row):
-    """将 sqlite3.Row 转为 Python dict，自动反序列化 JSON 字段"""
-    d = {}
-    for k in row.keys():
-        if k in ('_key', '_rowid'):
-            continue
-        val = row[k]
-        if val is None:
-            continue
-        if isinstance(val, str):
-            s = val.strip()
-            if (s.startswith('[') and s.endswith(']')) or (s.startswith('{') and s.endswith('}')):
-                try:
-                    val = json.loads(val)
-                except Exception:
-                    pass
-        if k in ('allowRedo', 'isFirstSubmission', 'isArchived', 'isOffline') and isinstance(val, int):
-            val = bool(val)
-        d[k] = val
-    return d
-
-def _get_table_cols(conn, table_name):
-    """从数据库元数据中获取某表现有的全部列名"""
-    rows = conn.execute(f'PRAGMA table_info("{table_name}")').fetchall()
-    return [r['name'] for r in rows]
-
-def db_read(key):
-    """从 SQLite 动态读取 key 对应的数据"""
-    conn = get_db()
-    try:
-        # 1. 检查是否存在名为 "{key}" 的主表
-        row = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (key,)).fetchone()
-        if row:
-            cols = _get_table_cols(conn, key)
-            rows = conn.execute(f'SELECT * FROM "{key}"').fetchall()
-            if '_key' in cols:
-                # 扁平对象展开表（如 studentPoints, timerRecords）
-                res = {}
-                for r in rows:
-                    res[r['_key']] = _from_sqlite_row(r)
-                return res
-            else:
-                # 数组列表表（如 gradePapers, studentAnswers）
-                return [_from_sqlite_row(r) for r in rows]
-
-        # 2. 检查是否存在 "{key}_kv" 键值表
-        row_kv = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (f'{key}_kv',)).fetchone()
-        if row_kv:
-            rows = conn.execute(f'SELECT key, value FROM "{key}_kv"').fetchall()
-            res = {}
-            for r in rows:
-                v = r['value']
-                if isinstance(v, str):
-                    s = v.strip()
-                    if (s.startswith('[') and s.endswith(']')) or (s.startswith('{') and s.endswith('}')):
-                        try:
-                            v = json.loads(v)
-                        except Exception:
-                            pass
-                res[r['key']] = v
-            return res
-
-        # 3. 检查 _meta 标量配置表
-        row_meta = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='_meta'").fetchone()
-        if row_meta:
-            m = conn.execute("SELECT value FROM _meta WHERE key=?", (key,)).fetchone()
-            if m:
-                return m['value']
-
-        return None
-    finally:
-        conn.close()
-
-def db_append_row(table_name, record):
-    """动态往表中追加一行数据（若遇到新列自动 ALTER TABLE 添加）"""
-    conn = get_db()
-    try:
-        cols = _get_table_cols(conn, table_name)
-        if not cols:
-            col_defs = [f'"{k}" {_infer_type(v)}' for k, v in record.items()]
-            conn.execute(f'CREATE TABLE "{table_name}" ({", ".join(col_defs)})')
-            cols = list(record.keys())
-        else:
-            for k, v in record.items():
-                if k not in cols:
-                    conn.execute(f'ALTER TABLE "{table_name}" ADD COLUMN "{k}" {_infer_type(v)}')
-                    cols.append(k)
-
-        present_cols = list(record.keys())
-        placeholders = ', '.join(['?'] * len(present_cols))
-        col_names = ', '.join([f'"{k}"' for k in present_cols])
-        values = [_to_sqlite_val(record[k]) for k in present_cols]
-        conn.execute(f'INSERT INTO "{table_name}" ({col_names}) VALUES ({placeholders})', values)
-        conn.commit()
-    finally:
-        conn.close()
-
-def db_save_key(key, data):
-    """动态保存/覆盖某个 key 的整体数据"""
-    conn = get_db()
-    try:
-        if data is None:
-            conn.execute(f'DROP TABLE IF EXISTS "{key}"')
-            conn.execute(f'DROP TABLE IF EXISTS "{key}_kv"')
-            row_meta = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='_meta'").fetchone()
-            if row_meta:
-                conn.execute("DELETE FROM _meta WHERE key=?", (key,))
-            conn.commit()
-            return
-
-        if isinstance(data, list):
-            conn.execute(f'DROP TABLE IF EXISTS "{key}"')
-            if len(data) > 0:
-                col_types = {}
-                for row in data:
-                    if isinstance(row, dict):
-                        for k, v in row.items():
-                            if k not in col_types or col_types[k] == 'TEXT':
-                                if v is not None:
-                                    col_types[k] = _infer_type(v)
-                                elif k not in col_types:
-                                    col_types[k] = 'TEXT'
-                if col_types:
-                    col_defs = [f'"{k}" {t}' for k, t in col_types.items()]
-                    conn.execute(f'CREATE TABLE "{key}" ({", ".join(col_defs)})')
-                    cols = list(col_types.keys())
-                    placeholders = ', '.join(['?'] * len(cols))
-                    col_names = ', '.join([f'"{k}"' for k in cols])
-                    insert_sql = f'INSERT INTO "{key}" ({col_names}) VALUES ({placeholders})'
-                    for row in data:
-                        vals = [_to_sqlite_val(row.get(c)) for c in cols]
-                        conn.execute(insert_sql, vals)
-                else:
-                    conn.execute(f'CREATE TABLE "{key}" ("value" TEXT)')
-                    for item in data:
-                        conn.execute(f'INSERT INTO "{key}" ("value") VALUES (?)', [_to_sqlite_val(item),])
-            else:
-                conn.execute(f'CREATE TABLE "{key}" ("value" TEXT)')
-            conn.commit()
-
-        elif isinstance(data, dict):
-            all_objs = len(data) > 0 and all(isinstance(v, dict) for v in data.values())
-            if all_objs:
-                conn.execute(f'DROP TABLE IF EXISTS "{key}"')
-                rows = [{'_key': k, **v} for k, v in data.items()]
-                col_types = {}
-                for row in rows:
-                    for k, v in row.items():
-                        if k not in col_types or col_types[k] == 'TEXT':
-                            if v is not None:
-                                col_types[k] = _infer_type(v)
-                            elif k not in col_types:
-                                col_types[k] = 'TEXT'
-                col_defs = [f'"{k}" {t}' for k, t in col_types.items()]
-                conn.execute(f'CREATE TABLE "{key}" ({", ".join(col_defs)})')
-                cols = list(col_types.keys())
-                placeholders = ', '.join(['?'] * len(cols))
-                col_names = ', '.join([f'"{k}"' for k in cols])
-                insert_sql = f'INSERT INTO "{key}" ({col_names}) VALUES ({placeholders})'
-                for row in rows:
-                    vals = [_to_sqlite_val(row.get(c)) for c in cols]
-                    conn.execute(insert_sql, vals)
-            else:
-                t_name = f'{key}_kv'
-                conn.execute(f'DROP TABLE IF EXISTS "{t_name}"')
-                conn.execute(f'CREATE TABLE "{t_name}" ("key" TEXT PRIMARY KEY, "value" TEXT)')
-                for k, v in data.items():
-                    conn.execute(f'INSERT INTO "{t_name}" ("key", "value") VALUES (?, ?)', (k, _to_sqlite_val(v)))
-            conn.commit()
-
-        else:
-            conn.execute('CREATE TABLE IF NOT EXISTS _meta ("key" TEXT PRIMARY KEY, "value" TEXT)')
-            conn.execute('INSERT OR REPLACE INTO _meta (key, value) VALUES (?, ?)', (key, str(data)))
-            conn.commit()
-    finally:
-        conn.close()
+# 核心黑科技：文件读写锁 (防止百人同时交卷导致数据损坏)
+db_lock = threading.Lock()
 
 class RequestHandler(http.server.SimpleHTTPRequestHandler):
     def do_POST(self):
@@ -382,7 +181,7 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.end_headers()
             return
 
-        # 2. 处理数据保存 (SQLite 模式，天然并发安全)
+        # 2. 处理 JSON 数据的保存 (已修复并发写入逻辑)
         if self.path == '/api/submit':
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
@@ -392,17 +191,27 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
                 key = req.get('key')
                 new_data = req.get('data')
 
-                if action == 'submit_paper':
-                    # 🚀 动态追加一行答题记录，自动拓展新列
-                    if isinstance(new_data, dict):
-                        new_data = dict(new_data)
-                        new_data['submitTime'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
-                        db_append_row('studentAnswers', new_data)
-                else:
-                    # 动态保存/覆盖配置数据
-                    if key is not None:
-                        db_save_key(key, new_data)
-
+                # 加锁！严格排队写入数据库
+                with db_lock:
+                    with open(DB_FILE, 'r', encoding='utf-8') as f:
+                        db = json.load(f)
+                    
+                    if action == 'submit_paper':
+                        # 🚀 核心修复：安全追加模式，防止百人并发互相覆盖
+                        if 'studentAnswers' not in db or not isinstance(db['studentAnswers'], list):
+                            db['studentAnswers'] = []
+                        if isinstance(new_data, dict):
+                            new_data = dict(new_data)
+                            new_data['submitTime'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+                        db['studentAnswers'].append(new_data)
+                    else:
+                        # 正常覆盖模式 (后台修改配置用)
+                        if key is not None:
+                            db[key] = new_data
+                    
+                    with open(DB_FILE, 'w', encoding='utf-8') as f:
+                        json.dump(db, f, ensure_ascii=False, indent=2)
+                        
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
                 self.end_headers()
@@ -468,17 +277,21 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.end_headers()
             return
 
-        # 3. 处理数据的读取 (SQLite 模式)
+        # 3. 处理数据的读取
         if self.path.startswith('/api/data'):
             query = parse_qs(urlparse(self.path).query)
             key = query.get('key', [None])[0]
-
-            data = db_read(key)
-
+            
+            with db_lock:
+                with open(DB_FILE, 'r', encoding='utf-8') as f:
+                    db = json.load(f)
+                    
+            data = db.get(key)
+            
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
-            self.wfile.write(json.dumps(data, ensure_ascii=False).encode('utf-8'))
+            self.wfile.write(json.dumps(data).encode('utf-8'))
             return
             
         return super().do_GET()
