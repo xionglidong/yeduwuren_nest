@@ -11,6 +11,9 @@ import sqlite3
 from urllib.parse import urlparse, parse_qs
 
 PORT = 8000
+
+# 全局写锁：保证所有写操作串行，防止并发竞态
+_write_lock = threading.Lock()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, "database.db")
 JSON_FILE = os.path.join(BASE_DIR, "database.json")  # 用于首次迁移
@@ -135,107 +138,139 @@ def db_read(key):
 
 def db_append_row(table_name, record):
     """动态往表中追加一行数据（若遇到新列自动 ALTER TABLE 添加）"""
-    conn = get_db()
-    try:
-        cols = _get_table_cols(conn, table_name)
-        if not cols:
-            col_defs = [f'"{k}" {_infer_type(v)}' for k, v in record.items()]
-            conn.execute(f'CREATE TABLE "{table_name}" ({", ".join(col_defs)})')
-            cols = list(record.keys())
-        else:
-            for k, v in record.items():
-                if k not in cols:
-                    conn.execute(f'ALTER TABLE "{table_name}" ADD COLUMN "{k}" {_infer_type(v)}')
-                    cols.append(k)
+    with _write_lock:
+        conn = get_db()
+        try:
+            cols = _get_table_cols(conn, table_name)
+            if not cols:
+                col_defs = [f'"{k}" {_infer_type(v)}' for k, v in record.items()]
+                conn.execute(f'CREATE TABLE "{table_name}" ({", ".join(col_defs)})')
+                cols = list(record.keys())
+            else:
+                for k, v in record.items():
+                    if k not in cols:
+                        conn.execute(f'ALTER TABLE "{table_name}" ADD COLUMN "{k}" {_infer_type(v)}')
+                        cols.append(k)
 
-        present_cols = list(record.keys())
-        placeholders = ', '.join(['?'] * len(present_cols))
-        col_names = ', '.join([f'"{k}"' for k in present_cols])
-        values = [_to_sqlite_val(record[k]) for k in present_cols]
-        conn.execute(f'INSERT INTO "{table_name}" ({col_names}) VALUES ({placeholders})', values)
-        conn.commit()
-    finally:
-        conn.close()
+            present_cols = list(record.keys())
+            placeholders = ', '.join(['?'] * len(present_cols))
+            col_names = ', '.join([f'"{k}"' for k in present_cols])
+            values = [_to_sqlite_val(record[k]) for k in present_cols]
+            conn.execute(f'INSERT INTO "{table_name}" ({col_names}) VALUES ({placeholders})', values)
+            conn.commit()
+        finally:
+            conn.close()
+
+def db_upsert_student_point(student_id, data):
+    """单行 upsert：只更新 studentPoints 表中指定学生的一行，不影响其他学生"""
+    with _write_lock:
+        conn = get_db()
+        try:
+            cols = _get_table_cols(conn, 'studentPoints')
+            row = {'_key': str(student_id), **{k: v for k, v in data.items() if k != '_key'}}
+            if not cols:
+                # 表不存在时先整体建表（只含这一行）
+                col_defs = [f'"{k}" {_infer_type(v)}' for k, v in row.items()]
+                conn.execute(f'CREATE TABLE "studentPoints" ({", ".join(col_defs)})')
+                cols = list(row.keys())
+            else:
+                # 动态补充新列
+                for k, v in row.items():
+                    if k not in cols:
+                        conn.execute(f'ALTER TABLE "studentPoints" ADD COLUMN "{k}" {_infer_type(v)}')
+                        cols.append(k)
+            # 删除该学生旧行，再插入新行（模拟 UPSERT）
+            conn.execute('DELETE FROM "studentPoints" WHERE "_key" = ?', (str(student_id),))
+            present_cols = [c for c in cols if c in row]
+            col_names = ', '.join([f'"{c}"' for c in present_cols])
+            placeholders = ', '.join(['?'] * len(present_cols))
+            values = [_to_sqlite_val(row.get(c)) for c in present_cols]
+            conn.execute(f'INSERT INTO "studentPoints" ({col_names}) VALUES ({placeholders})', values)
+            conn.commit()
+        finally:
+            conn.close()
 
 def db_save_key(key, data):
     """动态保存/覆盖某个 key 的整体数据"""
-    conn = get_db()
-    try:
-        if data is None:
-            conn.execute(f'DROP TABLE IF EXISTS "{key}"')
-            conn.execute(f'DROP TABLE IF EXISTS "{key}_kv"')
-            row_meta = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='_meta'").fetchone()
-            if row_meta:
-                conn.execute("DELETE FROM _meta WHERE key=?", (key,))
-            conn.commit()
-            return
+    with _write_lock:
+        conn = get_db()
+        try:
+            if data is None:
+                conn.execute(f'DROP TABLE IF EXISTS "{key}"')
+                conn.execute(f'DROP TABLE IF EXISTS "{key}_kv"')
+                row_meta = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='_meta'").fetchone()
+                if row_meta:
+                    conn.execute("DELETE FROM _meta WHERE key=?", (key,))
+                conn.commit()
+                return
 
-        if isinstance(data, list):
-            conn.execute(f'DROP TABLE IF EXISTS "{key}"')
-            if len(data) > 0:
-                col_types = {}
-                for row in data:
-                    if isinstance(row, dict):
+            if isinstance(data, list):
+                conn.execute(f'DROP TABLE IF EXISTS "{key}"')
+                if len(data) > 0:
+                    col_types = {}
+                    for row in data:
+                        if isinstance(row, dict):
+                            for k, v in row.items():
+                                if k not in col_types or col_types[k] == 'TEXT':
+                                    if v is not None:
+                                        col_types[k] = _infer_type(v)
+                                    elif k not in col_types:
+                                        col_types[k] = 'TEXT'
+                    if col_types:
+                        col_defs = [f'"{k}" {t}' for k, t in col_types.items()]
+                        conn.execute(f'CREATE TABLE "{key}" ({", ".join(col_defs)})')
+                        cols = list(col_types.keys())
+                        placeholders = ', '.join(['?'] * len(cols))
+                        col_names = ', '.join([f'"{k}"' for k in cols])
+                        insert_sql = f'INSERT INTO "{key}" ({col_names}) VALUES ({placeholders})'
+                        for row in data:
+                            vals = [_to_sqlite_val(row.get(c)) for c in cols]
+                            conn.execute(insert_sql, vals)
+                    else:
+                        conn.execute(f'CREATE TABLE "{key}" ("value" TEXT)')
+                        for item in data:
+                            conn.execute(f'INSERT INTO "{key}" ("value") VALUES (?)', [_to_sqlite_val(item),])
+                else:
+                    conn.execute(f'CREATE TABLE "{key}" ("value" TEXT)')
+                conn.commit()
+
+            elif isinstance(data, dict):
+                all_objs = len(data) > 0 and all(isinstance(v, dict) for v in data.values())
+                if all_objs:
+                    conn.execute(f'DROP TABLE IF EXISTS "{key}"')
+                    rows = [{'_key': k, **v} for k, v in data.items()]
+                    col_types = {}
+                    for row in rows:
                         for k, v in row.items():
                             if k not in col_types or col_types[k] == 'TEXT':
                                 if v is not None:
                                     col_types[k] = _infer_type(v)
                                 elif k not in col_types:
                                     col_types[k] = 'TEXT'
-                if col_types:
                     col_defs = [f'"{k}" {t}' for k, t in col_types.items()]
                     conn.execute(f'CREATE TABLE "{key}" ({", ".join(col_defs)})')
                     cols = list(col_types.keys())
                     placeholders = ', '.join(['?'] * len(cols))
                     col_names = ', '.join([f'"{k}"' for k in cols])
                     insert_sql = f'INSERT INTO "{key}" ({col_names}) VALUES ({placeholders})'
-                    for row in data:
+                    for row in rows:
                         vals = [_to_sqlite_val(row.get(c)) for c in cols]
                         conn.execute(insert_sql, vals)
                 else:
-                    conn.execute(f'CREATE TABLE "{key}" ("value" TEXT)')
-                    for item in data:
-                        conn.execute(f'INSERT INTO "{key}" ("value") VALUES (?)', [_to_sqlite_val(item),])
-            else:
-                conn.execute(f'CREATE TABLE "{key}" ("value" TEXT)')
-            conn.commit()
+                    t_name = f'{key}_kv'
+                    conn.execute(f'DROP TABLE IF EXISTS "{t_name}"')
+                    conn.execute(f'CREATE TABLE "{t_name}" ("key" TEXT PRIMARY KEY, "value" TEXT)')
+                    for k, v in data.items():
+                        conn.execute(f'INSERT INTO "{t_name}" ("key", "value") VALUES (?, ?)', (k, _to_sqlite_val(v)))
+                conn.commit()
 
-        elif isinstance(data, dict):
-            all_objs = len(data) > 0 and all(isinstance(v, dict) for v in data.values())
-            if all_objs:
-                conn.execute(f'DROP TABLE IF EXISTS "{key}"')
-                rows = [{'_key': k, **v} for k, v in data.items()]
-                col_types = {}
-                for row in rows:
-                    for k, v in row.items():
-                        if k not in col_types or col_types[k] == 'TEXT':
-                            if v is not None:
-                                col_types[k] = _infer_type(v)
-                            elif k not in col_types:
-                                col_types[k] = 'TEXT'
-                col_defs = [f'"{k}" {t}' for k, t in col_types.items()]
-                conn.execute(f'CREATE TABLE "{key}" ({", ".join(col_defs)})')
-                cols = list(col_types.keys())
-                placeholders = ', '.join(['?'] * len(cols))
-                col_names = ', '.join([f'"{k}"' for k in cols])
-                insert_sql = f'INSERT INTO "{key}" ({col_names}) VALUES ({placeholders})'
-                for row in rows:
-                    vals = [_to_sqlite_val(row.get(c)) for c in cols]
-                    conn.execute(insert_sql, vals)
             else:
-                t_name = f'{key}_kv'
-                conn.execute(f'DROP TABLE IF EXISTS "{t_name}"')
-                conn.execute(f'CREATE TABLE "{t_name}" ("key" TEXT PRIMARY KEY, "value" TEXT)')
-                for k, v in data.items():
-                    conn.execute(f'INSERT INTO "{t_name}" ("key", "value") VALUES (?, ?)', (k, _to_sqlite_val(v)))
-            conn.commit()
+                conn.execute('CREATE TABLE IF NOT EXISTS _meta ("key" TEXT PRIMARY KEY, "value" TEXT)')
+                conn.execute('INSERT OR REPLACE INTO _meta (key, value) VALUES (?, ?)', (key, str(data)))
+                conn.commit()
+        finally:
+            conn.close()
 
-        else:
-            conn.execute('CREATE TABLE IF NOT EXISTS _meta ("key" TEXT PRIMARY KEY, "value" TEXT)')
-            conn.execute('INSERT OR REPLACE INTO _meta (key, value) VALUES (?, ?)', (key, str(data)))
-            conn.commit()
-    finally:
-        conn.close()
 
 class RequestHandler(http.server.SimpleHTTPRequestHandler):
     def do_POST(self):
@@ -398,6 +433,10 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
                         new_data = dict(new_data)
                         new_data['submitTime'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
                         db_append_row('studentAnswers', new_data)
+                elif action == 'upsert_student_points':
+                    # 🔒 单行更新：只写当前学生，不覆盖其他学生数据
+                    if isinstance(new_data, dict) and new_data.get('id'):
+                        db_upsert_student_point(str(new_data['id']), new_data)
                 else:
                     # 动态保存/覆盖配置数据
                     if key is not None:

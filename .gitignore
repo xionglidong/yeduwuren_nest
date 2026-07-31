@@ -26,3 +26,5 @@ npm-debug.log
 uploads/
 pdf/
 video/
+.db-shm
+.db-wal

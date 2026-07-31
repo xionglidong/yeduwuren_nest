@@ -386,6 +386,15 @@
           });
           return;
         }
+        // 🔒 单行 upsert：只更新当前学生，不做全量覆写（避免并发竞态把其他学生数据覆盖）
+        if (key === STUDENT_POINTS_KEY && type === 'upsert_single' && value && value.id) {
+          await fetch('/api/submit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'upsert_student_points', data: value })
+          });
+          return;
+        }
         await fetch('/api/submit', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1833,7 +1842,8 @@
       const power = 100 * (1 - 1 / (1 + x));
       student.learningPower = Math.round(power * 10) / 10;
       
-      await saveData(STUDENT_POINTS_KEY, studentPoints);
+      // 🔒 只单行 upsert 当前学生的学习力，不做全量覆写
+      await saveData(STUDENT_POINTS_KEY, student, 'upsert_single');
       studentPointsData = studentPoints;
     }
 
@@ -3325,12 +3335,10 @@ submitAllBtn.disabled =
           const bestScoreAfterSubmit = Math.max(previousBestScore, score);
           const pointsGain = Math.max(0, bestScoreAfterSubmit - previousBestScore);
           let message = '';
-          studentPointsData = await getData(STUDENT_POINTS_KEY) || {};
           if (!studentPointsData[userId]) studentPointsData[userId] = { name: userName, id: userId, grade: userGrade || '', points: 0, createTime: Date.now(), lastUpdate: new Date().toLocaleString() };
           if (pointsGain > 0) {
               studentPointsData[userId].points += pointsGain;
               studentPointsData[userId].lastUpdate = new Date().toLocaleString();
-              await saveData(STUDENT_POINTS_KEY, studentPointsData);
               userPoints = studentPointsData[userId].points;
               if (isFirstSubmission) message = `本次答题得分 ${score} 分 已加入您的总积分！`;
               else message = `本次刷新该套题历史最高分（${previousBestScore} → ${bestScoreAfterSubmit}），为您增加 ${pointsGain} 分 积分。`;
