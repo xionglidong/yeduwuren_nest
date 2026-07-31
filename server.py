@@ -190,6 +190,41 @@ def db_upsert_student_point(student_id, data):
         finally:
             conn.close()
 
+def db_upsert_timer_record(student_id, paper_id, record_data):
+    """精确更新 timerRecords 表中单个学生×单个套题的计时格，不影响其他行/列"""
+    with _write_lock:
+        conn = get_db()
+        try:
+            col_name = str(paper_id)  # 列名即套题ID
+            student_key = str(student_id)
+            value_str = _to_sqlite_val(record_data)  # JSON字符串
+
+            cols = _get_table_cols(conn, 'timerRecords')
+            if not cols:
+                # 表不存在，整体建表
+                conn.execute(f'CREATE TABLE "timerRecords" ("_key" TEXT, "{col_name}" TEXT)')
+                conn.execute(f'INSERT INTO "timerRecords" ("_key", "{col_name}") VALUES (?, ?)',
+                             (student_key, value_str))
+            else:
+                # 确保该套题列存在
+                if col_name not in cols:
+                    conn.execute(f'ALTER TABLE "timerRecords" ADD COLUMN "{col_name}" TEXT')
+                    cols.append(col_name)
+                # 查该学生行是否存在
+                row = conn.execute('SELECT "_key" FROM "timerRecords" WHERE "_key" = ?',
+                                   (student_key,)).fetchone()
+                if row:
+                    # 行存在：只更新该列
+                    conn.execute(f'UPDATE "timerRecords" SET "{col_name}" = ? WHERE "_key" = ?',
+                                 (value_str, student_key))
+                else:
+                    # 行不存在：插入新行，只设该列
+                    conn.execute(f'INSERT INTO "timerRecords" ("_key", "{col_name}") VALUES (?, ?)',
+                                 (student_key, value_str))
+            conn.commit()
+        finally:
+            conn.close()
+
 def db_save_key(key, data):
     """动态保存/覆盖某个 key 的整体数据"""
     with _write_lock:
@@ -437,6 +472,13 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
                     # 🔒 单行更新：只写当前学生，不覆盖其他学生数据
                     if isinstance(new_data, dict) and new_data.get('id'):
                         db_upsert_student_point(str(new_data['id']), new_data)
+                elif action == 'upsert_timer_record':
+                    # 🔒 单格更新：只写当前学生×当前套题的计时格，不覆盖其他数据
+                    sid = new_data.get('studentId') if isinstance(new_data, dict) else None
+                    pid = new_data.get('paperId') if isinstance(new_data, dict) else None
+                    rec = new_data.get('record') if isinstance(new_data, dict) else None
+                    if sid and pid and rec is not None:
+                        db_upsert_timer_record(str(sid), str(pid), rec)
                 else:
                     # 动态保存/覆盖配置数据
                     if key is not None:
