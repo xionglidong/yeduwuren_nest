@@ -31,4 +31,40 @@ export class SubmitPaperDto {
   @IsNumber()
   @IsOptional()
   timeElapsed?: number;
+
+  @IsOptional()
+  fillInBlankDetails?: unknown;
+
+  @IsOptional()
+  fillInBlankStudentImage?: unknown;
+
+  @IsOptional()
+  fillInBlankScore?: unknown;
+
+  @IsOptional()
+  draftImages?: unknown;
+
+  @IsOptional()
+  correctionImages?: unknown;
+
+  @IsOptional()
+  correctionTime?: unknown;
+
+  @IsOptional()
+  recommendedTime?: unknown;
+
+  @IsOptional()
+  interimEvents?: unknown;
+
+  @IsOptional()
+  actualTimeElapsed?: unknown;
+
+  @IsOptional()
+  totalPauseDuration?: unknown;
+
+  @IsOptional()
+  pauseCount?: unknown;
+
+  @IsOptional()
+  pauseIntervals?: unknown;
 }

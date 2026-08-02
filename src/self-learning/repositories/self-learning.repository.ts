@@ -105,6 +105,10 @@ export class SelfLearningRepository {
     });
   }
 
+  async deleteForumPost(id: string): Promise<void> {
+    await this.prisma.forumPost.delete({ where: { id } });
+  }
+
   // ─── Materials ────────────────────────────────────────────────────────────
 
   async findAllMaterials(): Promise<ForumResourceMaterial[]> {

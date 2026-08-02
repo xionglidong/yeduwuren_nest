@@ -80,6 +80,12 @@ export class SelfLearningController {
     return this.selfLearningService.toggleLikePost(postId, studentId);
   }
 
+  @Delete('forum/posts/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteForumPost(@Param('id') id: string): Promise<void> {
+    return this.selfLearningService.deleteForumPost(id);
+  }
+
   // ─── Materials ────────────────────────────────────────────────────────────
 
   @Get('materials')

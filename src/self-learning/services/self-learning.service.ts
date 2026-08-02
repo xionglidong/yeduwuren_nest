@@ -90,6 +90,10 @@ export class SelfLearningService {
     return this.formatForumPost(updated);
   }
 
+  async deleteForumPost(id: string): Promise<void> {
+    await this.selfLearningRepository.deleteForumPost(id);
+  }
+
   // ─── Materials ────────────────────────────────────────────────────────────
 
   async getAllMaterials(): Promise<ForumResourceMaterial[]> {

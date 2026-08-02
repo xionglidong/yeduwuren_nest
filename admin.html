@@ -822,8 +822,13 @@
         return alert('请输入标签内容');
       }
       setAnswerTags(record, [...currentTags, ...nextTags]);
-      // Bulk update answers
-          await fetch(`/api/v1/papers/submissions/records/batch`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(allAnswers) });
+      if (record.paperId && record.id) {
+        await fetch(`/api/v1/papers/${record.paperId}/submissions/${record.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tag: getAnswerTags(record).join(',') })
+        });
+      }
       await showAnswerDetails(paperId, targetStudentId);
       await loadDailyRecords();
     }
@@ -833,8 +838,13 @@
       if (!record) return alert('未找到对应作答记录');
       const nextTags = getAnswerTags(record).filter((tag) => tag !== tagValue);
       setAnswerTags(record, nextTags);
-      // Bulk update answers
-          await fetch(`/api/v1/papers/submissions/records/batch`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(allAnswers) });
+      if (record.paperId && record.id) {
+        await fetch(`/api/v1/papers/${record.paperId}/submissions/${record.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tag: nextTags.join(',') })
+        });
+      }
       await showAnswerDetails(paperId, targetStudentId);
       await loadDailyRecords();
     }
@@ -1339,10 +1349,11 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
       return '🌱 学徒';
     }
     async function openAnswerRecordReport(answerIndex, paperId) {
-      const [allAnswers, papers, studentPointsMap] = await Promise.all([
+      const [allAnswers, papers, studentPointsMap, timerRecords] = await Promise.all([
         fetch(`/api/v1/papers/submissions/records`).then(r => r.json()).then((res) => res || []),
         fetch(`/api/v1/papers`).then(r => r.json()).then((res) => res || []),
-        fetch(`/api/v1/students/map`).then(r => r.json()).then((res) => res || {})
+        fetch(`/api/v1/students/map`).then(r => r.json()).then((res) => res || {}),
+        fetch(`/api/v1/timer/records`).then(r => r.json()).then((res) => res || {})
       ]);
       const record = allAnswers[answerIndex];
       const paper = papers.find((item) => item.id === paperId);
@@ -1361,6 +1372,16 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
       const paperHighestScore = paperRecords.length > 0
         ? Math.max(...paperRecords.map((item) => getRecordTotalScore(item, paper)))
         : totalScore;
+
+      const timerRec = (record.studentId && paperId && timerRecords[record.studentId]) ? timerRecords[record.studentId][paperId] : null;
+      const interimEvents = (Array.isArray(record.interimEvents) && record.interimEvents.length > 0)
+        ? record.interimEvents
+        : (timerRec && Array.isArray(timerRec['中途事项']) ? timerRec['中途事项'] : (timerRec && Array.isArray(timerRec.interimEvents) ? timerRec.interimEvents : []));
+      const recommendedTime = record.recommendedTime || (timerRec ? (parseInt(timerRec['推荐时长'], 10) || 0) : 0);
+      const defaultFbPoints = paper.fillInBlankCount > 0
+        ? Math.max(0, (paper.totalPoints - (paper.singlePoints || 0) * (paper.questionCount || 0)) / paper.fillInBlankCount)
+        : 0;
+
       const payload = {
         generatedAt: new Date().toLocaleString(),
         student: {
@@ -1401,8 +1422,8 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
           draftImages: Array.isArray(record.draftImages) ? record.draftImages : [],
           correctionImages: Array.isArray(record.correctionImages) ? record.correctionImages : [],
           correctionTime: record.correctionTime || '',
-          recommendedTime: record.recommendedTime || 0,
-          interimEvents: Array.isArray(record.interimEvents) ? record.interimEvents : [],
+          recommendedTime,
+          interimEvents,
           totalPauseDuration: record.totalPauseDuration || 0,
           pauseCount: record.pauseCount || 0,
           pauseIntervals: Array.isArray(record.pauseIntervals) ? record.pauseIntervals : []
@@ -1414,7 +1435,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
           fillBlankVideos: Array.isArray(paper.fillBlankVideos) ? paper.fillBlankVideos : [],
           fillInBlankAnswerImage: paper.fillInBlankAnswerImage || '',
           fbPointsArray: Array.isArray(paper.fbPointsArray) ? paper.fbPointsArray : [],
-          fillInBlankPoints: paper.fillInBlankPoints || 0,
+          fillInBlankPoints: paper.fillInBlankPoints || defaultFbPoints,
           questionTypes: Array.isArray(paper.questionTypes) ? paper.questionTypes : [],
           singlePoints: parseFloat(paper.singlePoints) || 0
         }
@@ -2110,9 +2131,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
         
         const [draggedCat] = categories.splice(draggedIdx, 1);
         categories.splice(targetIdx, 0, draggedCat);
-        // Bulk update categories not directly mapped, ideally we'd PUT individual categories
-          // Replacing with a generic bulk PUT for demonstration
-          await fetch(`/api/v1/papers/categories/batch`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(categories) });
+        await fetch(`/api/v1/papers/categories/${draggedCatId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paperIds: draggedCat.paperIds || [] }) });
         renderAllPaperLists();
         return;
       }
@@ -2127,25 +2146,13 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
       
       const currentCats = getPaperCategoryIds(papers[idx]);
       if (!currentCats.includes(categoryId)) {
-        papers[idx].categoryIds = [...currentCats, categoryId];
-        papers[idx].categoryId = papers[idx].categoryIds[0] || '';
-        // Bulk update papers
-          await fetch(`/api/v1/papers/batch`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(papers) });
-        
-        // Update category's paperIds list
-        let categories = (await fetch(`/api/v1/papers/categories/list`).then(r => r.json())) || [];
-        const catIdx = categories.findIndex(c => c.id === categoryId);
-        if (catIdx !== -1) {
-          if (!Array.isArray(categories[catIdx].paperIds)) {
-            categories[catIdx].paperIds = [];
-          }
-          if (!categories[catIdx].paperIds.includes(paperId)) {
-            categories[catIdx].paperIds.push(paperId);
-            // Bulk update categories not directly mapped, ideally we'd PUT individual categories
-          // Replacing with a generic bulk PUT for demonstration
-          await fetch(`/api/v1/papers/categories/batch`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(categories) });
-          }
-        }
+        const newCatIds = [...currentCats, categoryId];
+        // 核心优化：仅发起一次 RESTful 请求更新当前套卷的分类，不全量覆盖且不调用非existent的 batch 接口
+        await fetch(`/api/v1/papers/${paperId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ categoryId: categoryId, categoryIds: newCatIds })
+        });
         
         renderAllPaperLists();
       }
@@ -2202,7 +2209,6 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
         if (catIdx === -1) return;
         
         let paperIds = Array.isArray(categories[catIdx].paperIds) ? [...categories[catIdx].paperIds] : [];
-        
         const papers = (await fetch(`/api/v1/papers`).then(r => r.json())) || [];
         const activePapers = papers.filter(p => !isArchivedPaper(p));
         const catPapers = activePapers.filter(p => getPaperCategoryIds(p).includes(catId));
@@ -2225,10 +2231,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
           const [draggedId] = sortedIds.splice(draggedIdx, 1);
           sortedIds.splice(targetIdx, 0, draggedId);
           
-          categories[catIdx].paperIds = sortedIds;
-          // Bulk update categories not directly mapped, ideally we'd PUT individual categories
-          // Replacing with a generic bulk PUT for demonstration
-          await fetch(`/api/v1/papers/categories/batch`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(categories) });
+          await fetch(`/api/v1/papers/categories/${catId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paperIds: sortedIds }) });
           renderAllPaperLists();
         }
       } else if (leftPaperId && targetCatId) {
@@ -2238,46 +2241,8 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
         
         const currentCats = getPaperCategoryIds(papers[idx]);
         if (!currentCats.includes(targetCatId)) {
-          papers[idx].categoryIds = [...currentCats, targetCatId];
-          papers[idx].categoryId = papers[idx].categoryIds[0] || '';
-          // Bulk update papers
-          await fetch(`/api/v1/papers/batch`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(papers) });
-        }
-        
-        let categories = (await fetch(`/api/v1/papers/categories/list`).then(r => r.json())) || [];
-        const catIdx = categories.findIndex(c => c.id === targetCatId);
-        if (catIdx !== -1) {
-          let paperIds = Array.isArray(categories[catIdx].paperIds) ? [...categories[catIdx].paperIds] : [];
-          const activePapers = papers.filter(p => !isArchivedPaper(p));
-          const catPapers = activePapers.filter(p => getPaperCategoryIds(p).includes(targetCatId));
-          
-          const catPapersSorted = [...catPapers];
-          catPapersSorted.sort((a, b) => {
-            const idxA = paperIds.indexOf(a.id);
-            const idxB = paperIds.indexOf(b.id);
-            if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-            if (idxA !== -1) return -1;
-            if (idxB !== -1) return 1;
-            return 0;
-          });
-          
-          const sortedIds = catPapersSorted.map(p => p.id);
-          const existingIdx = sortedIds.indexOf(leftPaperId);
-          if (existingIdx !== -1) {
-            sortedIds.splice(existingIdx, 1);
-          }
-          
-          const targetIdx = sortedIds.indexOf(targetPaperId);
-          if (targetIdx !== -1) {
-            sortedIds.splice(targetIdx, 0, leftPaperId);
-          } else {
-            sortedIds.push(leftPaperId);
-          }
-          
-          categories[catIdx].paperIds = sortedIds;
-          // Bulk update categories not directly mapped, ideally we'd PUT individual categories
-          // Replacing with a generic bulk PUT for demonstration
-          await fetch(`/api/v1/papers/categories/batch`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(categories) });
+          const newCatIds = [...currentCats, targetCatId];
+          await fetch(`/api/v1/papers/${leftPaperId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ categoryId: targetCatId, categoryIds: newCatIds }) });
           renderAllPaperLists();
         }
       }
@@ -2318,21 +2283,18 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
       
       await fetch(`/api/v1/papers/categories/${categoryId}`, { method: 'DELETE' });
       
-      // Clear categoryId and categoryIds from papers
+      // Clear categoryId and categoryIds from papers using single item updates
       let papers = (await fetch(`/api/v1/papers`).then(r => r.json())) || [];
-      let updatedCount = 0;
-      papers.forEach(p => {
+      for (const p of papers) {
         const currentCats = getPaperCategoryIds(p);
         if (currentCats.includes(categoryId)) {
-          p.categoryIds = currentCats.filter(id => id !== categoryId);
-          p.categoryId = p.categoryIds[0] || '';
-          updatedCount++;
+          const newCatIds = currentCats.filter(id => id !== categoryId);
+          await fetch(`/api/v1/papers/${p.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ categoryId: newCatIds[0] || '', categoryIds: newCatIds })
+          });
         }
-      });
-      
-      if (updatedCount > 0) {
-        // Bulk update papers
-          await fetch(`/api/v1/papers/batch`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(papers) });
       }
       
       expandedCategoryIds.delete(categoryId);
@@ -2341,31 +2303,30 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
     
     async function removePaperFromCategory(paperId, categoryId) {
       let papers = (await fetch(`/api/v1/papers`).then(r => r.json())) || [];
-      const idx = papers.findIndex(p => p.id === paperId);
-      if (idx === -1) return;
+      const paper = papers.find(p => p.id === paperId);
+      if (!paper) return;
       
       let categories = (await fetch(`/api/v1/papers/categories/list`).then(r => r.json())) || [];
-      const catIdx = categories.findIndex(c => c.id === categoryId);
-      if (catIdx !== -1 && categories[catIdx].isArchived) {
-        papers[idx].isArchived = true;
-        if (!papers[idx].archivedAt) {
-          papers[idx].archivedAt = new Date().toLocaleString();
-        }
+      const cat = categories.find(c => c.id === categoryId);
+      let isArchived = paper.isArchived;
+      let archivedAt = paper.archivedAt;
+      if (cat && cat.isArchived) {
+        isArchived = true;
+        if (!archivedAt) archivedAt = new Date().toLocaleString();
       }
       
-      const currentCats = getPaperCategoryIds(papers[idx]);
-      papers[idx].categoryIds = currentCats.filter(id => id !== categoryId);
-      papers[idx].categoryId = papers[idx].categoryIds[0] || '';
-      // Bulk update papers
-          await fetch(`/api/v1/papers/batch`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(papers) });
-      
-      // Update category's paperIds list
-      if (catIdx !== -1 && Array.isArray(categories[catIdx].paperIds)) {
-        categories[catIdx].paperIds = categories[catIdx].paperIds.filter(id => id !== paperId);
-        // Bulk update categories not directly mapped, ideally we'd PUT individual categories
-          // Replacing with a generic bulk PUT for demonstration
-          await fetch(`/api/v1/papers/categories/batch`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(categories) });
-      }
+      const currentCats = getPaperCategoryIds(paper);
+      const newCatIds = currentCats.filter(id => id !== categoryId);
+      await fetch(`/api/v1/papers/${paperId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          categoryId: newCatIds[0] || '',
+          categoryIds: newCatIds,
+          isArchived,
+          archivedAt
+        })
+      });
       
       renderAllPaperLists();
     }
@@ -3472,9 +3433,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
           const id = this.dataset.id || '';
           if (!id) return;
           if (!confirm('确定要删除这条资料吗？')) return;
-          let resources = (await fetch(`/api/v1/self-learning/materials`).then(r => r.json())) || [];
-          resources = resources.filter((item) => item.id !== id);
-          await fetch(`/api/v1/self-learning/materials/batch`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(resources) });
+          await fetch(`/api/v1/self-learning/materials/${id}`, { method: 'DELETE' });
           await renderForumResourceList();
         });
       });
@@ -3484,9 +3443,11 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
       const file = rawFile.startsWith('pdf/') ? rawFile.slice(4) : (rawFile.startsWith('/pdf/') ? rawFile.slice(5) : rawFile);
       if (!file) return alert('请先选择 PDF 文件');
       const title = (forumResourceTitle ? forumResourceTitle.value.trim() : '') || file.replace(/\.pdf$/i, '');
-      const resources = (await fetch(`/api/v1/self-learning/materials`).then(r => r.json())) || [];
-      resources.unshift({ id: `fr_${Date.now()}`, title, file, createTime: Date.now() });
-      await fetch(`/api/v1/self-learning/materials/batch`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(resources) });
+      await fetch(`/api/v1/self-learning/materials`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, file, createTime: new Date().toLocaleString() })
+      });
       forumResourcePage = 1;
       if (forumResourceTitle) forumResourceTitle.value = '';
       if (forumResourcePdfFile) forumResourcePdfFile.value = '';
@@ -3520,17 +3481,18 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
         xhr.onload = function () {
           if (videoUploadBtn) videoUploadBtn.disabled = false;
           try {
-            if (xhr.status !== 200) {
+            if (xhr.status !== 200 && xhr.status !== 201) {
               if (videoUploadStatus) videoUploadStatus.textContent = '上传失败，请重试';
               return resolve('');
             }
             const resp = JSON.parse(xhr.responseText || '{}');
-            if (!resp.url) {
+            const url = resp.url || (resp.data && resp.data.url) || resp.path || (resp.data && resp.data.path) || '';
+            if (!url) {
               if (videoUploadStatus) videoUploadStatus.textContent = '上传失败，请重试';
               return resolve('');
             }
             if (videoUploadStatus) videoUploadStatus.textContent = '上传成功';
-            resolve(resp.url.startsWith('/') ? resp.url.slice(1) : resp.url);
+            resolve(url.startsWith('/') ? url.slice(1) : url);
           } catch (err) {
             if (videoUploadStatus) videoUploadStatus.textContent = '上传失败，请重试';
             resolve('');
@@ -3567,17 +3529,18 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
         xhr.onload = function () {
           if (pdfUploadBtn) pdfUploadBtn.disabled = false;
           try {
-            if (xhr.status !== 200) {
+            if (xhr.status !== 200 && xhr.status !== 201) {
               if (pdfUploadStatus) pdfUploadStatus.textContent = '上传失败，请重试';
               return resolve('');
             }
             const resp = JSON.parse(xhr.responseText || '{}');
-            if (!resp.url) {
+            const url = resp.url || (resp.data && resp.data.url) || resp.path || (resp.data && resp.data.path) || '';
+            if (!url) {
               if (pdfUploadStatus) pdfUploadStatus.textContent = '上传失败，请重试';
               return resolve('');
             }
             if (pdfUploadStatus) pdfUploadStatus.textContent = '上传成功';
-            resolve(resp.url.startsWith('/') ? resp.url.slice(1) : resp.url);
+            resolve(url.startsWith('/') ? url.slice(1) : url);
           } catch (err) {
             if (pdfUploadStatus) pdfUploadStatus.textContent = '上传失败，请重试';
             resolve('');
@@ -3805,9 +3768,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
         btn.addEventListener('click', async function () {
           const id = this.dataset.id;
           if (!confirm('确定删除这条自学内容吗？')) return;
-          let contents = (await fetch(`/api/v1/self-learning/contents`).then(r => r.json())) || [];
-          contents = contents.filter((item) => item.id !== id);
-          await fetch(`/api/v1/self-learning/contents/batch`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(contents) });
+          await fetch(`/api/v1/self-learning/contents/${id}`, { method: 'DELETE' });
           const watchStatsAll = (await fetch(`/api/v1/self-learning/watch-stats`).then(r => r.json())) || {};
           if (watchStatsAll[id]) {
             delete watchStatsAll[id];
@@ -3833,9 +3794,11 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
       const relatedPaperId = selfLearningRelatedPaper ? selfLearningRelatedPaper.value : '';
       if (!title) return alert('请填写内容标题');
       if (!videoFile) return alert('请选择视频文件');
-      let contents = (await fetch(`/api/v1/self-learning/contents`).then(r => r.json())) || [];
-      contents.push({ id: `sl_${Date.now()}`, title, summary, videoFile, grade, relatedPaperId, createTime: Date.now() });
-      await fetch(`/api/v1/self-learning/contents/batch`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(contents) });
+      await fetch(`/api/v1/self-learning/contents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, summary, fileUrl: videoFile, grade, relatedPaperId, createTime: new Date().toLocaleString() })
+      });
       if (selfLearningTitle) selfLearningTitle.value = '';
       if (selfLearningSummary) selfLearningSummary.value = '';
       if (selfLearningVideo) selfLearningVideo.value = '';
@@ -4212,8 +4175,9 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
                     const oldBestScore = oldRecords.reduce((best, item) => Math.max(best, getRecordTotalScore(item, paper)), 0);
 
                     allAnswers.splice(removeIdx, 1);
-                    // Bulk update answers
-          await fetch(`/api/v1/papers/submissions/records/batch`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(allAnswers) });
+                    if (targetAns.paperId && targetAns.id) {
+                      await fetch(`/api/v1/papers/${targetAns.paperId}/submissions/${targetAns.id}`, { method: 'DELETE' });
+                    }
 
                     const newRecords = allAnswers.filter(a => a.studentId === studentId && a.paperId === pid);
                     const newBestScore = newRecords.reduce((best, item) => Math.max(best, getRecordTotalScore(item, paper)), 0);
@@ -4223,7 +4187,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
                         const studentPointsData = (await fetch(`/api/v1/students/map`).then(r => r.json())) || {};
                         if (studentPointsData[studentId]) {
                             studentPointsData[studentId].points = Math.max(0, (studentPointsData[studentId].points || 0) - scoreToRemove);
-                            for (const [__sId, __sData] of Object.entries(studentPointsData)) await fetch(`/api/v1/students/${__sId}/points`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(__sData) });
+                            await fetch(`/api/v1/students/${studentId}/points`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(studentPointsData[studentId]) });
                             if(typeof loadStudentPointsList === 'function') loadStudentPointsList();
                         }
                     }
@@ -4377,27 +4341,29 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
         papers[paperIndex].answers = newAnswers; 
         papers[paperIndex].pdfFile = pdfFile;
         papers[paperIndex].videos = newVideos; // 存入选择题视频数组
-        papers[paperIndex].fillBlankVideos = newFbVideos; // 存入填空题视频数组
-        
-        // Bulk update papers
-          await fetch(`/api/v1/papers/batch`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(papers) }); 
+        await fetch(`/api/v1/papers/${currentConfigPaperId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ answers: newAnswers, pdfFile, videos: newVideos, fillBlankVideos: newFbVideos })
+        });
         
         // 自动重判分逻辑
         let allAnswers = (await fetch(`/api/v1/papers/submissions/records`).then(r => r.json())) || [], regradeCount = 0; 
-        allAnswers = allAnswers.map(answer => { 
-            if (answer.paperId === currentConfigPaperId) { 
+        for (const answer of allAnswers) { 
+            if (answer.paperId === currentConfigPaperId && answer.id) { 
                 let newScore = 0; 
-                for (let i = 0; i < answer.answers.length; i++) {
+                for (let i = 0; i < (answer.answers || []).length; i++) {
                     if (answer.answers[i] === newAnswers[i]) newScore += currentConfigPaper.singlePoints; 
                 }
                 if (answer.fillBlankScore !== undefined) newScore += answer.fillBlankScore; 
-                answer.score = newScore; 
+                await fetch(`/api/v1/papers/${currentConfigPaperId}/submissions/${answer.id}`, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ score: newScore })
+                });
                 regradeCount++; 
             } 
-            return answer; 
-        }); 
-        // Bulk update answers
-          await fetch(`/api/v1/papers/submissions/records/batch`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(allAnswers) }); 
+        }
         
         closeAnswerConfigModal(); 
         renderAllPaperLists(); 
@@ -5586,8 +5552,17 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
             record.fillInBlankScore = newFbScore; 
             record.score += diff; 
             
-            // Bulk update answers
-          await fetch(`/api/v1/papers/submissions/records/batch`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(allAnswers) }); 
+            if (record.paperId && record.id) {
+              await fetch(`/api/v1/papers/${record.paperId}/submissions/${record.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  fillInBlankDetails: tempJudgments,
+                  fillInBlankScore: newFbScore,
+                  score: record.score
+                })
+              });
+            }
             
             const afterBestScore = allAnswers
               .filter(a => String(a.paperId) === String(currentGradingContext.paperId) && String(a.studentId) === String(studentId))
@@ -5598,7 +5573,7 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
                 if (studentPoints[studentId]) {
                     studentPoints[studentId].points += pointsDelta;
                     studentPoints[studentId].lastUpdate = new Date().toLocaleString() + ' (Teacher Override)';
-                    for (const [__sId, __sData] of Object.entries(studentPoints)) await fetch(`/api/v1/students/${__sId}/points`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(__sData) });
+                    await fetch(`/api/v1/students/${studentId}/points`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(studentPoints[studentId]) });
                 }
             }
             
@@ -5791,9 +5766,7 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
 
     window.deleteForumMessage = async function(id) {
         if(!confirm('⚠️ 警告：确定要彻底删除这条讨论记录吗？删除后所有学生端将同步消失！')) return;
-        let msgs = (await fetch(`/api/v1/self-learning/forum/posts`).then(r => r.json())) || [];
-        msgs = msgs.filter(m => m.id !== id);
-        await fetch(`/api/v1/self-learning/forum/posts/batch`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(msgs) });
+        await fetch(`/api/v1/self-learning/forum/posts/${id}`, { method: 'DELETE' });
         loadAdminForum(); 
         alert('✅ 删帖成功！');
     } 

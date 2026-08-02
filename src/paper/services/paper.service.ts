@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PaperRepository } from '../repositories/paper.repository';
+import { StudentService } from '../../student/student.service';
 import { Paper, StudentAnswer } from '@prisma/client';
 import { SubmitPaperDto } from '../dto/submit-paper.dto';
 
@@ -15,13 +16,17 @@ export interface FormattedStudentAnswer {
   timeElapsed?: number;
   isFirstSubmission: boolean;
   tag?: string;
+  [key: string]: unknown;
 }
 
 @Injectable()
 export class PaperService {
   private readonly logger = new Logger(PaperService.name);
 
-  constructor(private readonly paperRepository: PaperRepository) {}
+  constructor(
+    private readonly paperRepository: PaperRepository,
+    private readonly studentService: StudentService,
+  ) {}
 
   // ─── Papers ──────────────────────────────────────────────────────────────
 
@@ -81,17 +86,47 @@ export class PaperService {
               correctCount++;
             }
           }
-          calculatedScore = correctCount * paper.singlePoints;
+          let mcScore = correctCount * paper.singlePoints;
+          if (dto.fillInBlankScore !== undefined && typeof dto.fillInBlankScore === 'number') {
+            mcScore += dto.fillInBlankScore;
+          }
+          if (dto.score === undefined) {
+            calculatedScore = mcScore;
+          }
         }
       } catch (err) {
         this.logger.warn(`Could not parse standard answers for paper ${paper.id}: ${err}`);
       }
     }
 
-    const previousCount = await this.paperRepository.countSubmissions(dto.studentId, dto.paperId);
+    const finalScore = typeof dto.score === 'number' ? dto.score : calculatedScore;
+
+    // Calculate previous best score for this student & paper to determine pointsGain
+    const previousSubmissions = await this.paperRepository.findSubmissionsByStudent(dto.studentId);
+    const paperSubmissions = previousSubmissions.filter((s) => s.paperId === dto.paperId);
+    const previousCount = paperSubmissions.length;
     const isFirstSubmission = previousCount === 0;
 
-    return this.paperRepository.createSubmission(dto, calculatedScore, totalPoints, isFirstSubmission);
+    const previousBestScore = paperSubmissions.reduce((best, s) => Math.max(best, s.score), 0);
+    const bestScoreAfter = Math.max(previousBestScore, finalScore);
+    const pointsGain = Math.max(0, bestScoreAfter - previousBestScore);
+
+    if (pointsGain > 0 && dto.studentId) {
+      try {
+        const student = await this.studentService.getStudentById(dto.studentId).catch(() => null);
+        const currentPoints = student ? student.points : 0;
+        await this.studentService.upsertStudentPoint({
+          id: dto.studentId,
+          name: dto.studentName,
+          points: currentPoints + pointsGain,
+          lastUpdate: new Date().toLocaleString(),
+        });
+      } catch (e) {
+        this.logger.warn(`Could not update student points on submitPaper: ${e}`);
+      }
+    }
+
+    return this.paperRepository.createSubmission(dto, finalScore, totalPoints, isFirstSubmission);
   }
 
   async getAllSubmissions(): Promise<FormattedStudentAnswer[]> {
@@ -118,11 +153,13 @@ export class PaperService {
         ? JSON.stringify(body['answers'])
         : String(body['answers']);
     }
+    for (const k of Object.keys(body)) {
+      if (!['score', 'totalPoints', 'tag', 'answers'].includes(k)) {
+        updateData[k] = body[k];
+      }
+    }
 
-    const updated = await this.paperRepository.updateSubmission(
-      submissionId,
-      updateData as Parameters<typeof this.paperRepository.updateSubmission>[1],
-    );
+    const updated = await this.paperRepository.updateSubmission(submissionId, updateData);
     return this.formatSubmission(updated);
   }
 
@@ -134,6 +171,8 @@ export class PaperService {
       id: c.id,
       name: c.name,
       paperIds: (() => { try { return JSON.parse(c.paperIds); } catch { return []; } })(),
+      isArchived: c.isArchived,
+      archivedAt: c.archivedAt ?? '',
       createTime: c.createTime,
     }));
   }
@@ -144,6 +183,8 @@ export class PaperService {
       id: cat.id,
       name: cat.name,
       paperIds: (() => { try { return JSON.parse(cat.paperIds); } catch { return []; } })(),
+      isArchived: cat.isArchived,
+      archivedAt: cat.archivedAt ?? '',
       createTime: cat.createTime,
     };
   }
@@ -156,6 +197,8 @@ export class PaperService {
       id: cat.id,
       name: cat.name,
       paperIds: (() => { try { return JSON.parse(cat.paperIds); } catch { return []; } })(),
+      isArchived: cat.isArchived,
+      archivedAt: cat.archivedAt ?? '',
       createTime: cat.createTime,
     };
   }
@@ -171,6 +214,12 @@ export class PaperService {
   private formatSubmission(r: StudentAnswer): FormattedStudentAnswer {
     let parsedAnswers: string[] = [];
     try { parsedAnswers = JSON.parse(r.answers); } catch { parsedAnswers = []; }
+
+    let parsedOptions: Record<string, unknown> = {};
+    if (r.options) {
+      try { parsedOptions = JSON.parse(r.options); } catch { parsedOptions = {}; }
+    }
+
     return {
       id: r.id,
       paperId: r.paperId,
@@ -182,6 +231,8 @@ export class PaperService {
       submitTime: r.submitTime,
       timeElapsed: r.timeElapsed ?? undefined,
       isFirstSubmission: r.isFirstSubmission,
+      tag: r.tag ?? undefined,
+      ...parsedOptions,
     };
   }
 }

@@ -18,6 +18,17 @@ export interface ExpressMulterFile {
   buffer: Buffer;
 }
 
+function fixFilenameEncoding(name: string): string {
+  if (!name) return name;
+  try {
+    const fixed = Buffer.from(name, 'latin1').toString('utf8');
+    if (!fixed.includes('\uFFFD')) {
+      return fixed;
+    }
+  } catch {}
+  return name;
+}
+
 @Injectable()
 export class UploadService {
   private readonly logger = new Logger(UploadService.name);
@@ -45,9 +56,10 @@ export class UploadService {
     }
 
     const videoDir = this.configService.get<string>('app.videoDir', 'video');
-    const originalName = path.basename(file.originalname || 'video.mp4');
+    const rawOriginalName = fixFilenameEncoding(file.originalname || 'video.mp4');
+    const originalName = path.basename(rawOriginalName);
     const ext = path.extname(originalName).toLowerCase().replace('.', '') || 'mp4';
-    const nameRoot = path.basename(originalName, path.extname(originalName)).replace(/\s+/g, '_') || 'video';
+    const nameRoot = path.basename(originalName, path.extname(originalName)).replace(/[\s\/\\?%*:|"<>]+/g, '_') || 'video';
     const safeName = `${nameRoot}_${Date.now()}.${ext}`;
 
     const result: StoredFileInfo = await this.storageService.saveFile({
@@ -71,9 +83,10 @@ export class UploadService {
     }
 
     const pdfDir = this.configService.get<string>('app.pdfDir', 'pdf');
-    const originalName = path.basename(file.originalname || 'doc.pdf');
+    const rawOriginalName = fixFilenameEncoding(file.originalname || 'doc.pdf');
+    const originalName = path.basename(rawOriginalName);
     const ext = path.extname(originalName).toLowerCase().replace('.', '') || 'pdf';
-    const nameRoot = path.basename(originalName, path.extname(originalName)).replace(/\s+/g, '_') || 'pdf';
+    const nameRoot = path.basename(originalName, path.extname(originalName)).replace(/[\s\/\\?%*:|"<>]+/g, '_') || 'pdf';
     const safeName = `${nameRoot}_${Date.now()}.${ext}`;
 
     const result: StoredFileInfo = await this.storageService.saveFile({

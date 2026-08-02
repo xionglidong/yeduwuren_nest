@@ -145,6 +145,20 @@ export class PaperRepository {
     isFirstSubmission: boolean,
   ): Promise<StudentAnswer> {
     const submitTimeStr = dto.submitTime || new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const optionsObj: Record<string, unknown> = {};
+    if (dto.fillInBlankDetails !== undefined) optionsObj['fillInBlankDetails'] = dto.fillInBlankDetails;
+    if (dto.fillInBlankStudentImage !== undefined) optionsObj['fillInBlankStudentImage'] = dto.fillInBlankStudentImage;
+    if (dto.fillInBlankScore !== undefined) optionsObj['fillInBlankScore'] = dto.fillInBlankScore;
+    if (dto.draftImages !== undefined) optionsObj['draftImages'] = dto.draftImages;
+    if (dto.correctionImages !== undefined) optionsObj['correctionImages'] = dto.correctionImages;
+    if (dto.correctionTime !== undefined) optionsObj['correctionTime'] = dto.correctionTime;
+    if (dto.recommendedTime !== undefined) optionsObj['recommendedTime'] = dto.recommendedTime;
+    if (dto.interimEvents !== undefined) optionsObj['interimEvents'] = dto.interimEvents;
+    if (dto.actualTimeElapsed !== undefined) optionsObj['actualTimeElapsed'] = dto.actualTimeElapsed;
+    if (dto.totalPauseDuration !== undefined) optionsObj['totalPauseDuration'] = dto.totalPauseDuration;
+    if (dto.pauseCount !== undefined) optionsObj['pauseCount'] = dto.pauseCount;
+    if (dto.pauseIntervals !== undefined) optionsObj['pauseIntervals'] = dto.pauseIntervals;
+
     return this.prisma.studentAnswer.create({
       data: {
         paperId: dto.paperId,
@@ -156,6 +170,7 @@ export class PaperRepository {
         submitTime: submitTimeStr,
         timeElapsed: dto.timeElapsed ?? null,
         isFirstSubmission,
+        options: Object.keys(optionsObj).length > 0 ? JSON.stringify(optionsObj) : null,
       },
     });
   }
@@ -164,12 +179,34 @@ export class PaperRepository {
     return this.prisma.studentAnswer.findUnique({ where: { id } });
   }
 
-  async updateSubmission(id: string, data: Partial<{
-    answers: string; score: number; totalPoints: number;
-    submitTime: string; timeElapsed: number | null; isFirstSubmission: boolean;
-    tag: string;
-  }>): Promise<StudentAnswer> {
-    return this.prisma.studentAnswer.update({ where: { id }, data });
+  async updateSubmission(
+    id: string,
+    data: Record<string, unknown>,
+  ): Promise<StudentAnswer> {
+    const existing = await this.prisma.studentAnswer.findUnique({ where: { id } });
+    if (!existing) throw new Error(`Submission ${id} not found`);
+
+    let existingOptions: Record<string, unknown> = {};
+    if (existing.options) {
+      try { existingOptions = JSON.parse(existing.options); } catch { existingOptions = {}; }
+    }
+
+    const directFields = ['answers', 'score', 'totalPoints', 'submitTime', 'timeElapsed', 'isFirstSubmission', 'tag'];
+    const updatePayload: Record<string, unknown> = {};
+
+    for (const key of Object.keys(data)) {
+      if (directFields.includes(key)) {
+        updatePayload[key] = data[key];
+      } else {
+        existingOptions[key] = data[key];
+      }
+    }
+
+    if (Object.keys(existingOptions).length > 0) {
+      updatePayload['options'] = JSON.stringify(existingOptions);
+    }
+
+    return this.prisma.studentAnswer.update({ where: { id }, data: updatePayload });
   }
 
   async findSubmissionsByStudent(studentId: string): Promise<StudentAnswer[]> {
@@ -201,6 +238,8 @@ export class PaperRepository {
         paperIds: Array.isArray(body['paperIds'])
           ? JSON.stringify(body['paperIds'])
           : String(body['paperIds'] ?? '[]'),
+        isArchived: Boolean(body['isArchived'] ?? false),
+        archivedAt: body['archivedAt'] !== undefined ? String(body['archivedAt']) : null,
         createTime: String(body['createTime'] ?? new Date().toLocaleString()),
       },
     });
@@ -214,6 +253,8 @@ export class PaperRepository {
         ? JSON.stringify(body['paperIds'])
         : String(body['paperIds'] ?? '[]');
     }
+    if ('isArchived' in body) data['isArchived'] = Boolean(body['isArchived']);
+    if ('archivedAt' in body) data['archivedAt'] = body['archivedAt'] ? String(body['archivedAt']) : '';
     return this.prisma.paperCategory.update({
       where: { id },
       data: data as Parameters<typeof this.prisma.paperCategory.update>[0]['data'],

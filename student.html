@@ -1856,8 +1856,11 @@
       };
       
       const studentPoints = await fetchJson("/api/v1/students/map") || {};
-      const student = studentPoints[userId];
+      const student = studentPoints[userId] || (studentPointsData ? studentPointsData[userId] : null);
       if (!student) return;
+      if (studentPointsData && studentPointsData[userId] && typeof studentPointsData[userId].points === 'number') {
+        student.points = studentPointsData[userId].points;
+      }
       
       const metrics = calculateStudentLearningMetrics(userId, allAnswers, papers);
       
@@ -3386,6 +3389,7 @@ submitAllBtn.disabled =
               studentPointsData[userId].points += pointsGain;
               studentPointsData[userId].lastUpdate = new Date().toLocaleString();
               userPoints = studentPointsData[userId].points;
+              await saveData(STUDENT_POINTS_KEY, studentPointsData[userId], 'upsert_single');
               if (isFirstSubmission) message = `本次答题得分 ${score} 分 已加入您的总积分！`;
               else message = `本次刷新该套题历史最高分（${previousBestScore} → ${bestScoreAfterSubmit}），为您增加 ${pointsGain} 分 积分。`;
           } else {
