@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>系统数据总览</title>
   
+  <script src="http.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -247,21 +248,17 @@
     let g_distChart = null, g_trendChart = null, g_typeChart = null;
     let g_wrongRankPage = 1, g_wrongRankItems = [];
 
-    // 获取数据 (联网)
-    async function getData(key) {
-      try { const response = await fetch(`/api/data?key=${key}`); return await response.json(); } 
-      catch (e) { return null; }
-    }
-
+    // 直接调用 RESTful 接口获取数据
     window.addEventListener('DOMContentLoaded', async () => {
         try {
             const [pts, ans, pps, hw] = await Promise.all([
-                getData(KEYS.POINTS).then(res => res || {}),
-                getData(KEYS.ANSWERS).then(res => res || []),
-                getData(KEYS.PAPERS).then(res => res || []),
-                getData(KEYS.HIDDEN_WRONG).then(res => res || [])
+                fetch('/api/v1/students/map').then(r => r.json()).then(res => res || {}),
+                fetch('/api/v1/papers/submissions/records').then(r => r.json()).then(res => res || []),
+                fetch('/api/v1/papers').then(r => r.json()).then(res => res || []),
+                fetch('/api/v1/config/hiddenWrongQuestions').then(r => r.json()).then(res => res || [])
             ]);
             g_students = pts; g_allAns = ans; g_papers = pps; g_hiddenWrong = hw;
+
 
             initGlobalStats();
             initFilters();
@@ -443,7 +440,11 @@
         if (!confirm('确定要在学生端和教师端隐藏该错题记录吗？')) return;
         g_hiddenWrong.push(key);
         try {
-            await fetch('/api/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save_settings', key: KEYS.HIDDEN_WRONG, data: g_hiddenWrong }) });
+            await fetch('/api/v1/config/hiddenWrongQuestions', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ value: g_hiddenWrong })
+            });
             initWrongRateLeaderboard();
         } catch (e) {
             alert('隐藏失败');

@@ -28,3 +28,6 @@ pdf/
 video/
 .db-shm
 .db-wal
+dist/
+*.prisma
+*.m4v

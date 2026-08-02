@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>学生学情分析报告</title>
   
+  <script src="http.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -274,12 +275,7 @@
     
     let g_allStudentRecords = [], g_papers = [], g_currentStudent = null, g_allPts = {}, g_allAns = [];
 
-    // 联网版数据获取函数
-    async function getData(key) {
-      try { const response = await fetch(`/api/data?key=${key}`); return await response.json(); } 
-      catch (e) { console.error("获取数据失败:", e); return null; }
-    }
-
+    // 直接调用 RESTful 接口获取数据
     window.addEventListener('DOMContentLoaded', async () => {
         const urlParams = new URLSearchParams(window.location.search);
         const studentId = urlParams.get('id');
@@ -287,9 +283,9 @@
 
         try {
             const [pts, allAns, papers] = await Promise.all([
-                getData(KEYS.POINTS).then(res => res || {}),
-                getData(KEYS.ANSWERS).then(res => res || []),
-                getData(KEYS.PAPERS).then(res => res || [])
+                fetch('/api/v1/students/map').then(r => r.json()).then(res => res || {}),
+                fetch('/api/v1/papers/submissions/records').then(r => r.json()).then(res => res || []),
+                fetch('/api/v1/papers').then(r => r.json()).then(res => res || [])
             ]);
             
             const stu = pts[studentId];
