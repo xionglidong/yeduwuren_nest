@@ -82,79 +82,182 @@ async function main(): Promise<void> {
   }
 
   // 3. Seed Papers
+  // Fields that live as direct columns in the `papers` table (same as PAPER_DIRECT_FIELDS in paper.repository.ts).
+  // Every other field from the legacy row is packed into the `options` JSON column so nothing is lost.
+  const PAPER_DIRECT_FIELDS = new Set([
+    'id', 'grade', 'name', 'questionCount', 'singlePoints', 'totalPoints', 'answers',
+    'categoryId', 'createTime', 'createdAt',
+  ]);
+
+  function packPaperForSeed(row: Record<string, unknown>): {
+    grade: string; name: string; questionCount: number; singlePoints: number;
+    totalPoints: number; answers: string; categoryId: string | null;
+    createTime: string; options: string;
+  } {
+    const opts: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(row)) {
+      if (!PAPER_DIRECT_FIELDS.has(k) && v !== null && v !== undefined) {
+        // Parse JSON strings so the packed value is the real data, not a double-encoded string
+        if (typeof v === 'string') {
+          try {
+            const parsed = JSON.parse(v);
+            opts[k] = parsed;
+          } catch {
+            opts[k] = v;
+          }
+        } else {
+          opts[k] = v;
+        }
+      }
+    }
+    const answersRaw = row['answers'];
+    let answersStr: string;
+    if (typeof answersRaw === 'string') {
+      answersStr = answersRaw;
+    } else if (Array.isArray(answersRaw)) {
+      answersStr = JSON.stringify(answersRaw);
+    } else {
+      answersStr = '[]';
+    }
+    return {
+      grade: String(row['grade'] ?? ''),
+      name: String(row['name'] ?? ''),
+      questionCount: Number(row['questionCount'] ?? 0),
+      singlePoints: Number(row['singlePoints'] ?? 0),
+      totalPoints: Number(row['totalPoints'] ?? 0),
+      answers: answersStr,
+      categoryId: row['categoryId'] ? String(row['categoryId']) : null,
+      createTime: String(row['createTime'] ?? new Date().toLocaleString()),
+      options: JSON.stringify(opts),
+    };
+  }
+
   if (tableExists('gradePapers')) {
     console.log('🌱 Migrating Papers from database.db...');
-    const papers = legacyDb.prepare('SELECT * FROM "gradePapers"').all() as Array<Record<string, any>>;
+    const papers = legacyDb.prepare('SELECT * FROM "gradePapers"').all() as Array<Record<string, unknown>>;
     for (const p of papers) {
+      const id = String(p['id'] ?? '');
+      if (!id) continue;
+      const data = packPaperForSeed(p);
       await prisma.paper.upsert({
-        where: { id: String(p.id) },
-        update: {
-          grade: String(p.grade || ''),
-          name: String(p.name || ''),
-          questionCount: Number(p.questionCount || 0),
-          singlePoints: Number(p.singlePoints || 0),
-          totalPoints: Number(p.totalPoints || 0),
-          answers: typeof p.answers === 'string' ? p.answers : JSON.stringify(p.answers || []),
-          options: p.options ? (typeof p.options === 'string' ? p.options : JSON.stringify(p.options)) : null,
-          createTime: String(p.createTime || ''),
-          categoryId: p.categoryId ? String(p.categoryId) : null,
-        },
-        create: {
-          id: String(p.id),
-          grade: String(p.grade || ''),
-          name: String(p.name || ''),
-          questionCount: Number(p.questionCount || 0),
-          singlePoints: Number(p.singlePoints || 0),
-          totalPoints: Number(p.totalPoints || 0),
-          answers: typeof p.answers === 'string' ? p.answers : JSON.stringify(p.answers || []),
-          options: p.options ? (typeof p.options === 'string' ? p.options : JSON.stringify(p.options)) : null,
-          createTime: String(p.createTime || ''),
-          categoryId: p.categoryId ? String(p.categoryId) : null,
-        },
+        where: { id },
+        create: { id, ...data },
+        update: data,
       });
     }
   }
 
   // 4. Seed Student Submissions / Answers
+  const STUDENT_ANSWER_DIRECT_FIELDS = new Set([
+    'id', 'paperId', 'studentId', 'studentName', 'answers', 'score',
+    'totalPoints', 'submitTime', 'timeElapsed', 'isFirstSubmission', 'tag', 'createdAt',
+  ]);
+
+  function packStudentAnswerForSeed(row: Record<string, unknown>): {
+    paperId: string;
+    studentId: string;
+    studentName: string;
+    answers: string;
+    score: number;
+    totalPoints: number;
+    submitTime: string;
+    timeElapsed: number | null;
+    isFirstSubmission: boolean;
+    tag: string | null;
+    options: string | null;
+  } {
+    const opts: Record<string, unknown> = {};
+
+    if (row['options'] && typeof row['options'] === 'string') {
+      try {
+        const parsedOpts = JSON.parse(row['options']);
+        if (typeof parsedOpts === 'object' && parsedOpts !== null) {
+          Object.assign(opts, parsedOpts);
+        }
+      } catch {}
+    }
+
+    for (const [k, v] of Object.entries(row)) {
+      if (k === 'options') continue;
+      if (!STUDENT_ANSWER_DIRECT_FIELDS.has(k) && v !== null && v !== undefined) {
+        if (typeof v === 'string') {
+          try {
+            const parsed = JSON.parse(v);
+            opts[k] = parsed;
+          } catch {
+            opts[k] = v;
+          }
+        } else {
+          opts[k] = v;
+        }
+      }
+    }
+
+    const answersRaw = row['answers'];
+    let answersStr: string;
+    if (typeof answersRaw === 'string') {
+      answersStr = answersRaw;
+    } else if (Array.isArray(answersRaw)) {
+      answersStr = JSON.stringify(answersRaw);
+    } else {
+      answersStr = '[]';
+    }
+
+    return {
+      paperId: String(row['paperId'] ?? ''),
+      studentId: String(row['studentId'] ?? ''),
+      studentName: String(row['studentName'] ?? ''),
+      answers: answersStr,
+      score: Number(row['score'] ?? 0),
+      totalPoints: Number(row['totalPoints'] ?? 100),
+      submitTime: String(row['submitTime'] ?? new Date().toISOString()),
+      timeElapsed: row['timeElapsed'] !== null && row['timeElapsed'] !== undefined ? Number(row['timeElapsed']) : null,
+      isFirstSubmission: Boolean(row['isFirstSubmission'] !== 0 && row['isFirstSubmission'] !== false),
+      tag: row['tag'] ? String(row['tag']) : (row['tags'] ? String(row['tags']) : null),
+      options: Object.keys(opts).length > 0 ? JSON.stringify(opts) : null,
+    };
+  }
+
   if (tableExists('studentAnswers')) {
     console.log('🌱 Migrating Student Answers from database.db...');
-    const answers = legacyDb.prepare('SELECT * FROM "studentAnswers"').all() as Array<Record<string, any>>;
+    const answers = legacyDb.prepare('SELECT * FROM "studentAnswers"').all() as Array<Record<string, unknown>>;
     for (const a of answers) {
-      if (a.studentId) {
+      const studentId = String(a['studentId'] || '');
+      if (studentId) {
         await prisma.student.upsert({
-          where: { id: String(a.studentId) },
-          update: { name: a.studentName || `Student_${a.studentId}` },
+          where: { id: studentId },
+          update: { name: String(a['studentName'] || `Student_${studentId}`) },
           create: {
-            id: String(a.studentId),
-            name: a.studentName || `Student_${a.studentId}`,
+            id: studentId,
+            name: String(a['studentName'] || `Student_${studentId}`),
             grade: '未设置',
           },
         });
       }
 
-      const paper = a.paperId ? await prisma.paper.findUnique({ where: { id: String(a.paperId) } }) : null;
-      if (paper && a.studentId) {
+      const paperId = String(a['paperId'] || '');
+      const paper = paperId ? await prisma.paper.findUnique({ where: { id: paperId } }) : null;
+      if (paper && studentId) {
+        const data = packStudentAnswerForSeed(a);
         const existing = await prisma.studentAnswer.findFirst({
           where: {
-            paperId: String(a.paperId),
-            studentId: String(a.studentId),
-            submitTime: String(a.submitTime || ''),
+            paperId,
+            studentId,
+            submitTime: data.submitTime,
           },
         });
 
         if (!existing) {
           await prisma.studentAnswer.create({
             data: {
-              paperId: String(a.paperId),
-              studentId: String(a.studentId),
-              studentName: String(a.studentName || ''),
-              answers: typeof a.answers === 'string' ? a.answers : JSON.stringify(a.answers || []),
-              score: Number(a.score || 0),
-              totalPoints: Number(a.totalPoints || paper.totalPoints || 100),
-              submitTime: String(a.submitTime || new Date().toISOString()),
-              timeElapsed: a.timeElapsed ? Number(a.timeElapsed) : null,
-              isFirstSubmission: Boolean(a.isFirstSubmission !== 0),
+              ...data,
+              totalPoints: data.totalPoints || paper.totalPoints || 100,
             },
+          });
+        } else {
+          await prisma.studentAnswer.update({
+            where: { id: existing.id },
+            data: { options: data.options },
           });
         }
       }

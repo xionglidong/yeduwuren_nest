@@ -163,6 +163,14 @@ export class PaperService {
     return this.formatSubmission(updated);
   }
 
+  async deleteSubmission(paperId: string, submissionId: string): Promise<void> {
+    const submission = await this.paperRepository.findSubmissionById(submissionId);
+    if (!submission || (paperId && submission.paperId !== paperId)) {
+      throw new NotFoundException(`Submission ${submissionId} not found`);
+    }
+    await this.paperRepository.deleteSubmission(submissionId);
+  }
+
   // ─── Categories ───────────────────────────────────────────────────────────
 
   async getAllCategories(): Promise<Record<string, unknown>[]> {
