@@ -1,0 +1,175 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Student {
+  id            String   @id
+  name          String
+  grade         String
+  points        Int      @default(0)
+  learningPower Float    @default(1.0)
+  cohort        Int?
+  lastUpdate    String?
+  createdAt     DateTime @default(now())
+
+  submissions     StudentAnswer[]
+  timerRecords    TimerRecord[]
+  exchangeRecords ExchangeRecord[]
+  forumPosts      ForumPost[]
+
+  @@map("students")
+}
+
+model PaperCategory {
+  id         String   @id @default(cuid())
+  name       String   @unique
+  paperIds   String   @default("[]") // JSON Array string
+  isArchived Boolean  @default(false)
+  archivedAt String?
+  createTime String
+  createdAt  DateTime @default(now())
+
+  papers Paper[]
+
+  @@map("paper_categories")
+}
+
+model Paper {
+  id            String         @id
+  categoryId    String?
+  category      PaperCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  grade         String
+  name          String
+  questionCount Int
+  singlePoints  Int
+  totalPoints   Int
+  answers       String         // JSON Array string
+  options       String?        // JSON String
+  createTime    String
+  createdAt     DateTime       @default(now())
+
+  submissions StudentAnswer[]
+
+  @@map("papers")
+}
+
+model StudentAnswer {
+  id                String   @id @default(cuid())
+  paperId           String
+  paper             Paper    @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  studentId         String
+  student           Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentName       String
+  answers           String   // JSON Array string
+  score             Float
+  totalPoints       Float
+  submitTime        String
+  timeElapsed       Int?
+  isFirstSubmission Boolean  @default(true)
+  tag               String?  // optional admin tag/note
+  options           String?  // JSON String for extra fields (fillInBlankDetails, interimEvents, etc.)
+  createdAt         DateTime @default(now())
+
+  @@map("student_answers")
+}
+
+model TimerRecord {
+  id         String   @id @default(cuid())
+  studentId  String
+  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  paperId    String
+  recordData String   // JSON string of timer data
+  updatedAt  DateTime @updatedAt
+
+  @@unique([studentId, paperId])
+  @@map("timer_records")
+}
+
+model ExchangePrize {
+  id          String   @id @default(cuid())
+  name        String
+  points      Int
+  description String?
+  icon        String?
+  iconColor   String?
+  bgColor     String?
+  isAvailable Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@map("exchange_prizes")
+}
+
+model ExchangeRecord {
+  id          String   @id @default(cuid())
+  studentId   String
+  student     Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentName String
+  prizeName   String
+  points      Int
+  time        String
+  createdAt   DateTime @default(now())
+
+  @@map("exchange_records")
+}
+
+model SelfLearningContent {
+  id         String   @id @default(cuid())
+  title      String
+  type       String   // "VIDEO" | "PDF"
+  fileUrl    String
+  size       Int?
+  createTime String
+  createdAt  DateTime @default(now())
+
+  @@map("self_learning_contents")
+}
+
+model SelfLearningWatchStat {
+  id            String   @id @default(cuid())
+  resourceKey   String
+  studentId     String
+  watchDuration Int      @default(0)
+  updatedAt     DateTime @updatedAt
+
+  @@unique([resourceKey, studentId])
+  @@map("self_learning_watch_stats")
+}
+
+model ForumPost {
+  id           String   @id @default(cuid())
+  senderId     String
+  sender       Student  @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  senderName   String
+  isAnonymous  Boolean  @default(false)
+  text         String
+  image        String?
+  time         String
+  likedBy      String   @default("[]") // JSON Array string of student IDs
+  tippedPoints Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@map("forum_posts")
+}
+
+model ForumResourceMaterial {
+  id         String   @id @default(cuid())
+  title      String
+  file       String
+  createTime String
+  createdAt  DateTime @default(now())
+
+  @@map("forum_resource_materials")
+}
+
+model MetaConfig {
+  key       String   @id
+  value     String   // Plain text or JSON string
+  updatedAt DateTime @updatedAt
+
+  @@map("_meta")
+}

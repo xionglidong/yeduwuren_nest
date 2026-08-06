@@ -60,6 +60,23 @@ export class PaperController {
     return this.paperService.updateSubmission(paperId, submissionId, body);
   }
 
+  @Delete(':paperId/submissions/:submissionId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteSubmission(
+    @Param('paperId') paperId: string,
+    @Param('submissionId') submissionId: string,
+  ): Promise<void> {
+    return this.paperService.deleteSubmission(paperId, submissionId);
+  }
+
+  @Delete('submissions/:submissionId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteSubmissionDirect(
+    @Param('submissionId') submissionId: string,
+  ): Promise<void> {
+    return this.paperService.deleteSubmission('', submissionId);
+  }
+
   // ─── Paper by ID (must be last to avoid swallowing named sub-routes) ──────
 
   @Get(':id')

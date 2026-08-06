@@ -221,6 +221,10 @@ export class PaperRepository {
     return this.prisma.studentAnswer.count({ where: { studentId, paperId } });
   }
 
+  async deleteSubmission(id: string): Promise<void> {
+    await this.prisma.studentAnswer.delete({ where: { id } });
+  }
+
   // ─── Categories ───────────────────────────────────────────────────────────
 
   async findAllCategories(): Promise<PaperCategory[]> {
