@@ -12,7 +12,7 @@ export interface AppConfig {
 
 export default (): { app: AppConfig } => ({
   app: {
-    port: parseInt(process.env.PORT || '8000', 10),
+    port: parseInt(process.env.PORT || '8002', 10),
     nodeEnv: process.env.NODE_ENV || 'development',
     databaseUrl: process.env.DATABASE_URL || 'file:./database.db',
     uploadDir: process.env.UPLOAD_DIR || 'uploads',

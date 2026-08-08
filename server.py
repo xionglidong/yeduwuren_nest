@@ -10,7 +10,7 @@ import shutil
 import sqlite3
 from urllib.parse import urlparse, parse_qs
 
-PORT = 8000
+PORT = 8002
 
 # 全局写锁：保证所有写操作串行，防止并发竞态
 _write_lock = threading.Lock()

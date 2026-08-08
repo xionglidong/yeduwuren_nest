@@ -2,7 +2,6 @@
 node_modules/
 
 # 环境变量
-.env
 .env.local
 .env.development
 
@@ -29,5 +28,7 @@ video/
 .db-shm
 .db-wal
 dist/
-*.prisma
 *.m4v
+*.db
+*.db-journal
+.DS_Store

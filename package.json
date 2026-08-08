@@ -14,7 +14,7 @@
     "start:prod": "node dist/main",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
-    "prisma:seed": "ts-node src/database/seeds/seed.ts"
+    "prisma:seed": "prisma db push && ts-node src/database/seeds/seed.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
