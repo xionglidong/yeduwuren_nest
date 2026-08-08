@@ -78,11 +78,13 @@ export class PaperService {
     if (paper) {
       totalPoints = paper.totalPoints;
       try {
-        const standardAnswers: string[] = JSON.parse(paper.answers);
+        const standardAnswers: unknown[] = JSON.parse(paper.answers);
         if (Array.isArray(standardAnswers) && dto.answers) {
           let correctCount = 0;
           for (let i = 0; i < standardAnswers.length; i++) {
-            if (dto.answers[i] && dto.answers[i].trim().toUpperCase() === standardAnswers[i].trim().toUpperCase()) {
+            const item = standardAnswers[i];
+            const stdAns = typeof item === 'object' && item !== null ? String((item as Record<string, unknown>).answer ?? '') : String(item ?? '');
+            if (dto.answers[i] && dto.answers[i].trim().toUpperCase() === stdAns.trim().toUpperCase()) {
               correctCount++;
             }
           }

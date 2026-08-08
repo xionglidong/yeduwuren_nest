@@ -26,6 +26,14 @@ export class StudentService {
     return student;
   }
 
+  async deleteStudent(id: string): Promise<void> {
+    const student = await this.studentRepository.findById(id);
+    if (!student) {
+      throw new NotFoundException(`Student with ID ${id} not found`);
+    }
+    await this.studentRepository.deleteStudent(id);
+  }
+
   async getAllStudents(): Promise<Student[]> {
     return this.studentRepository.findAll();
   }

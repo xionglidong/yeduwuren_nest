@@ -315,7 +315,7 @@
       const stdAns = standard || '';
       if (isMultiple) {
         if (!studentAns || !stdAns) return { score: 0, status: 'incorrect', text: '错误' };
-        const stdOptions = stdAns.split('');
+        const stdOptions = typeof stdAns == 'string' ? stdAns.split('') : stdAns.answer.split('');
         const studentOptions = studentAns.split('');
         let hasWrong = false;
         let correctCount = 0;
@@ -454,7 +454,8 @@
         choiceBody.innerHTML = '<tr><td colspan="5" class="text-center text-gray-400 py-6">暂无选择题作答</td></tr>';
       } else {
         choiceBody.innerHTML = studentAnswers.map((answer, index) => {
-          const correct = standardAnswers[index] || '';
+          const rawCorrect = standardAnswers[index] || '';
+          const correct = typeof rawCorrect === 'object' && rawCorrect !== null ? (rawCorrect.answer || '') : String(rawCorrect);
           const isMultiple = payload.paperContent?.questionTypes && payload.paperContent.questionTypes[index] === 'multiple';
           const qInfo = getQuestionScore(answer, correct, isMultiple, payload.paperContent?.singlePoints);
           

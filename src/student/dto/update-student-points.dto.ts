@@ -1,9 +1,9 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsBoolean } from 'class-validator';
 
 export class UpdateStudentPointsDto {
   @IsString()
-  @IsNotEmpty({ message: 'Student ID is required' })
-  id!: string;
+  @IsOptional()
+  id?: string;
 
   @IsString()
   @IsOptional()
@@ -24,6 +24,10 @@ export class UpdateStudentPointsDto {
   @IsNumber()
   @IsOptional()
   cohort?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  isArchived?: boolean;
 
   @IsString()
   @IsOptional()

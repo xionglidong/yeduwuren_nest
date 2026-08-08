@@ -44,6 +44,7 @@ async function main(): Promise<void> {
           points: typeof s.points === 'number' ? s.points : 0,
           learningPower: typeof s.learningPower === 'number' ? s.learningPower : 1.0,
           cohort: typeof s.cohort === 'number' ? s.cohort : null,
+          isArchived: !!s.isArchived,
           lastUpdate: s.lastUpdate || null,
         },
         create: {
@@ -53,6 +54,7 @@ async function main(): Promise<void> {
           points: typeof s.points === 'number' ? s.points : 0,
           learningPower: typeof s.learningPower === 'number' ? s.learningPower : 1.0,
           cohort: typeof s.cohort === 'number' ? s.cohort : null,
+          isArchived: !!s.isArchived,
           lastUpdate: s.lastUpdate || null,
         },
       });
@@ -86,12 +88,12 @@ async function main(): Promise<void> {
   // Every other field from the legacy row is packed into the `options` JSON column so nothing is lost.
   const PAPER_DIRECT_FIELDS = new Set([
     'id', 'grade', 'name', 'questionCount', 'singlePoints', 'totalPoints', 'answers',
-    'categoryId', 'createTime', 'createdAt',
+    'fillInBlankConfig', 'categoryId', 'createTime', 'createdAt',
   ]);
 
   function packPaperForSeed(row: Record<string, unknown>): {
     grade: string; name: string; questionCount: number; singlePoints: number;
-    totalPoints: number; answers: string; categoryId: string | null;
+    totalPoints: number; answers: string; fillInBlankConfig: string | null; categoryId: string | null;
     createTime: string; options: string;
   } {
     const opts: Record<string, unknown> = {};
@@ -119,6 +121,13 @@ async function main(): Promise<void> {
     } else {
       answersStr = '[]';
     }
+
+    const fibConfigRaw = row['fillInBlankConfig'];
+    let fibConfigStr: string | null = null;
+    if (fibConfigRaw) {
+      fibConfigStr = typeof fibConfigRaw === 'string' ? fibConfigRaw : JSON.stringify(fibConfigRaw);
+    }
+
     return {
       grade: String(row['grade'] ?? ''),
       name: String(row['name'] ?? ''),
@@ -126,6 +135,7 @@ async function main(): Promise<void> {
       singlePoints: Number(row['singlePoints'] ?? 0),
       totalPoints: Number(row['totalPoints'] ?? 0),
       answers: answersStr,
+      fillInBlankConfig: fibConfigStr,
       categoryId: row['categoryId'] ? String(row['categoryId']) : null,
       createTime: String(row['createTime'] ?? new Date().toLocaleString()),
       options: JSON.stringify(opts),

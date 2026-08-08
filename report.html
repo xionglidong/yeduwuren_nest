@@ -189,6 +189,21 @@
       </div>
     </section>
 
+    <!-- 阶段错题分布 (按难度、题型、知识点三维统计) -->
+    <section class="mb-6 bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+      <div class="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
+        <h3 class="text-lg font-bold text-gray-800 flex items-center">
+          <i class="fa fa-pie-chart text-red-500 mr-2"></i> 阶段错题分布 (按难度、题型、知识点)
+        </h3>
+        <div class="text-sm font-bold text-gray-600">
+          错题总计：<span id="wrongTotalBadge" class="text-red-600 text-base font-black">0</span> 道
+        </div>
+      </div>
+      <div id="wrongTagsContainer" class="w-full">
+        <!-- 错题三维维度卡片通过 JS 动态渲染 -->
+      </div>
+    </section>
+
     <section class="flex-grow bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
       
       <div class="mb-6">
@@ -418,6 +433,8 @@
         document.getElementById('rptCount').innerText = myStats.count;
         document.getElementById('rptWrong').innerText = myStats.wrong;
         
+        renderPhaseWrongTagsBreakdown(myStats.wrongQuestions);
+
         const myLearningTime = calculateLearningTimeMinutes(records);
         const lTimeEl = document.getElementById('rptLearningTime');
         if (lTimeEl) lTimeEl.innerText = Math.round(myLearningTime / 60 * 10) / 10 + '小时';
@@ -533,20 +550,224 @@
         tbody.innerHTML = html;
     }
 
+    function getQuestionTagValues(paper, qType, idx) {
+      if (!paper) return [];
+      let tagsObj = {};
+      if (qType === 'mc') {
+        const item = paper.answers ? paper.answers[idx] : null;
+        if (item && typeof item === 'object') {
+          tagsObj = item.tags || {};
+        }
+      } else if (qType === 'fb') {
+        if (Array.isArray(paper.fillInBlankConfig) && paper.fillInBlankConfig[idx]) {
+          const fib = paper.fillInBlankConfig[idx];
+          if (fib && typeof fib === 'object') {
+            tagsObj = fib.tags || {};
+          }
+        }
+      }
+      if (!tagsObj || typeof tagsObj !== 'object') return [];
+      return Object.values(tagsObj).map(v => String(v).trim()).filter(Boolean);
+    }
+
+    function getQuestionTagsObj(paper, qType, idx) {
+      if (!paper) return {};
+      let tagsObj = {};
+      if (qType === 'mc') {
+        const item = paper.answers ? paper.answers[idx] : null;
+        if (item && typeof item === 'object') {
+          tagsObj = item.tags || {};
+        }
+      } else if (qType === 'fb') {
+        if (Array.isArray(paper.fillInBlankConfig) && paper.fillInBlankConfig[idx]) {
+          const fib = paper.fillInBlankConfig[idx];
+          if (fib && typeof fib === 'object') {
+            tagsObj = fib.tags || {};
+          }
+        }
+      }
+      if (!tagsObj || typeof tagsObj !== 'object') return {};
+      return tagsObj;
+    }
+
+    function calculatePhaseWrongQuestions(records, papers) {
+      const wrongQuestions = [];
+      for (let record of records) {
+        const paper = papers.find(p => p.id === record.paperId);
+        if (!paper) continue;
+
+        if (record.answers && paper.answers) {
+          record.answers.forEach((ans, idx) => {
+            const std = paper.answers[idx];
+            const correctAns = (typeof std === 'object' && std !== null) ? std.answer : std;
+            if (ans !== correctAns) {
+              const qKey = paper.id + '_mc_' + idx;
+              if (!wrongQuestions.some(wq => wq.key === qKey)) {
+                const tagsObj = getQuestionTagsObj(paper, 'mc', idx);
+                wrongQuestions.push({
+                  key: qKey,
+                  paperId: paper.id,
+                  originalPaperName: paper.name,
+                  questionLabel: `选择 第 ${idx + 1} 题`,
+                  correctAnswer: correctAns,
+                  tagsObj: tagsObj,
+                  tags: Object.values(tagsObj).map(v => String(v).trim()).filter(Boolean)
+                });
+              }
+            }
+          });
+        }
+
+        if (record.fillInBlankDetails && Array.isArray(record.fillInBlankDetails)) {
+          record.fillInBlankDetails.forEach((score, idx) => {
+            const maxScore = paper.fbPointsArray ? (parseFloat(paper.fbPointsArray[idx]) || 0) : (parseFloat(paper.fillInBlankPoints) || 0);
+            let isWrong = false;
+            if (typeof score === 'boolean') {
+              isWrong = !score;
+            } else {
+              const numericScore = parseFloat(score) || 0;
+              isWrong = numericScore < (maxScore * 0.8);
+            }
+            if (isWrong) {
+              const qKey = paper.id + '_fb_' + idx;
+              if (!wrongQuestions.some(wq => wq.key === qKey)) {
+                const tagsObj = getQuestionTagsObj(paper, 'fb', idx);
+                wrongQuestions.push({
+                  key: qKey,
+                  paperId: paper.id,
+                  originalPaperName: paper.name,
+                  questionLabel: `填空/大题 第 ${idx + 1} 题`,
+                  correctAnswer: '详见原解析',
+                  tagsObj: tagsObj,
+                  tags: Object.values(tagsObj).map(v => String(v).trim()).filter(Boolean)
+                });
+              }
+            }
+          });
+        }
+      }
+      return wrongQuestions;
+    }
+
+    function renderPhaseWrongTagsBreakdown(wrongQuestions) {
+      const container = document.getElementById('wrongTagsContainer');
+      const badgeTotal = document.getElementById('wrongTotalBadge');
+      if (badgeTotal) badgeTotal.textContent = wrongQuestions.length;
+      if (!container) return;
+
+      if (wrongQuestions.length === 0) {
+        container.innerHTML = `<div class="text-center py-6 text-green-600 font-bold bg-green-50/50 rounded-xl border border-green-100 flex items-center justify-center"><i class="fa fa-smile-o mr-2 text-xl"></i>本阶段太棒了，没有产生任何错题！</div>`;
+        return;
+      }
+
+      // 三个维度统计配置：难度系数、题目类型、知识点
+      const dims = [
+        { key: 'difficulty', title: '难度系数', icon: 'fa-tachometer', bg: 'bg-indigo-50/40', border: 'border-indigo-150', titleColor: 'text-indigo-900', badgeColor: 'bg-indigo-100/90 text-indigo-700', dotColor: 'bg-indigo-500', counts: {} },
+        { key: 'qType', title: '题目类型', icon: 'fa-cubes', bg: 'bg-purple-50/40', border: 'border-purple-150', titleColor: 'text-purple-900', badgeColor: 'bg-purple-100/90 text-purple-700', dotColor: 'bg-purple-500', counts: {} },
+        { key: 'knowledge', title: '知识点', icon: 'fa-book', bg: 'bg-blue-50/40', border: 'border-blue-150', titleColor: 'text-blue-900', badgeColor: 'bg-blue-100/90 text-blue-700', dotColor: 'bg-blue-500', counts: {} }
+      ];
+
+      wrongQuestions.forEach(wq => {
+        const tObj = wq.tagsObj || {};
+        const entries = Object.entries(tObj);
+        
+        let hasDiff = false;
+        let hasType = false;
+        let hasKp = false;
+
+        entries.forEach(([k, v]) => {
+          const keyStr = String(k || '').trim();
+          const valStr = String(v || '').trim();
+          if (!valStr) return;
+
+          if (keyStr.includes('难度')) {
+            dims[0].counts[valStr] = (dims[0].counts[valStr] || 0) + 1;
+            hasDiff = true;
+          } else if (keyStr.includes('型') || keyStr.includes('类')) {
+            dims[1].counts[valStr] = (dims[1].counts[valStr] || 0) + 1;
+            hasType = true;
+          } else {
+            // 归入知识点
+            dims[2].counts[valStr] = (dims[2].counts[valStr] || 0) + 1;
+            hasKp = true;
+          }
+        });
+
+        if (!hasDiff) dims[0].counts['未设置难度'] = (dims[0].counts['未设置难度'] || 0) + 1;
+        if (!hasType) dims[1].counts['未设置类型'] = (dims[1].counts['未设置类型'] || 0) + 1;
+        if (!hasKp) dims[2].counts['未设置知识点'] = (dims[2].counts['未设置知识点'] || 0) + 1;
+      });
+
+      let html = `<div>`;
+
+      dims.forEach(dim => {
+        const sortedTagNames = Object.keys(dim.counts).sort((a, b) => {
+          if (a.startsWith('未设置')) return 1;
+          if (b.startsWith('未设置')) return -1;
+          return dim.counts[b] - dim.counts[a];
+        });
+
+        const totalTagged = sortedTagNames.filter(t => !t.startsWith('未设置')).reduce((sum, t) => sum + dim.counts[t], 0);
+
+        let itemsHtml = '';
+        if (sortedTagNames.length === 0) {
+          itemsHtml = `<div class="text-xs text-gray-400 text-center py-4">暂无数据</div>`;
+        } else {
+          sortedTagNames.forEach(tName => {
+            const cnt = dim.counts[tName];
+            const isUntagged = tName.startsWith('未设置');
+            itemsHtml += `
+              <div class="bg-white border border-gray-150 rounded-lg p-2.5 flex items-center justify-between shadow-2xs hover:shadow-xs transition mr-2">
+                <div class="flex items-center space-x-2 min-w-0 pr-2">
+                  <span class="w-2 h-2 rounded-full ${isUntagged ? 'bg-gray-300' : dim.dotColor} shrink-0"></span>
+                  <span class="font-bold ${isUntagged ? 'text-gray-400 font-normal' : 'text-gray-800'} text-xs truncate" title="${escapeHtmlText(tName)}">${escapeHtmlText(tName)}</span>
+                </div>
+                <span class="px-2 py-0.5 ${isUntagged ? 'bg-gray-100 text-gray-500 font-medium' : 'bg-red-100 text-red-700 font-black'} rounded-full text-xs shrink-0">
+                  ${cnt} 道
+                </span>
+              </div>
+            `;
+          });
+        }
+
+        html += `
+          <div class="${dim.bg} border ${dim.border} rounded-xl p-4 flex flex-col justify-between shadow-xs">
+            <div>
+              <div class="flex items-center justify-between mb-3 pb-2 border-b ${dim.border}">
+                <span class="font-bold ${dim.titleColor} text-sm flex items-center">
+                  <i class="fa ${dim.icon} mr-2"></i> ${dim.title}
+                </span>
+                <span class="text-[11px] font-bold px-2 py-0.5 ${dim.badgeColor} rounded-full">
+                  已归类 ${totalTagged} 道
+                </span>
+              </div>
+              <div class="max-h-64 overflow-y-auto pr-0.5" style="display:flex;flex-wrap:wrap">
+                ${itemsHtml}
+              </div>
+            </div>
+          </div>
+        `;
+      });
+
+      html += `</div>`;
+      container.innerHTML = html;
+    }
+
     function calculateStats(records, papers) {
-        let totalScore = 0, totalMax = 0, wrong = 0;
+        let totalScore = 0, totalMax = 0;
         records.forEach(r => {
             const p = papers.find(i => i.id === r.paperId);
             const max = p ? p.totalPoints : 100;
             totalScore += r.score;
             totalMax += max;
-            if(max > 0 && r.score < max) wrong++; 
         });
+        const wrongQuestions = calculatePhaseWrongQuestions(records, papers);
         return {
             count: records.length,
             acc: totalMax > 0 ? (totalScore / totalMax) * 100 : 0,
             avg: records.length > 0 ? totalScore / records.length : 0,
-            wrong: wrong
+            wrong: wrongQuestions.length,
+            wrongQuestions: wrongQuestions
         };
     }
     function calculateLearningTimeMinutes(records) {

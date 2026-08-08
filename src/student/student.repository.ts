@@ -32,6 +32,7 @@ export class StudentRepository {
         points: student.points,
         learningPower: student.learningPower,
         cohort: student.cohort ?? undefined,
+        isArchived: student.isArchived,
         lastUpdate: student.lastUpdate ?? undefined,
       };
     }
@@ -53,6 +54,7 @@ export class StudentRepository {
           points: dto.points !== undefined ? dto.points : existing.points,
           learningPower: dto.learningPower !== undefined ? dto.learningPower : existing.learningPower,
           cohort: dto.cohort !== undefined ? dto.cohort : existing.cohort,
+          isArchived: dto.isArchived !== undefined ? dto.isArchived : existing.isArchived,
           lastUpdate: nowStr,
         },
       });
@@ -66,6 +68,7 @@ export class StudentRepository {
         points: dto.points || 0,
         learningPower: dto.learningPower || 1.0,
         cohort: dto.cohort ?? null,
+        isArchived: dto.isArchived ?? false,
         lastUpdate: nowStr,
       },
     });
@@ -75,6 +78,12 @@ export class StudentRepository {
     await this.prisma.student.update({
       where: { id },
       data: { learningPower },
+    });
+  }
+
+  async deleteStudent(id: string): Promise<void> {
+    await this.prisma.student.delete({
+      where: { id },
     });
   }
 }

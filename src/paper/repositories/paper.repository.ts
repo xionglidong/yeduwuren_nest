@@ -6,13 +6,50 @@ import { SubmitPaperDto } from '../dto/submit-paper.dto';
 // Fields that Paper table stores directly (rest go into `options` JSON column)
 const PAPER_DIRECT_FIELDS = new Set([
   'id', 'grade', 'name', 'questionCount', 'singlePoints', 'totalPoints', 'answers',
-  'categoryId', 'createTime', 'createdAt',
+  'fillInBlankConfig', 'categoryId', 'createTime', 'createdAt',
 ]);
 
 /** Build a formatted paper object merging `options` back into top-level fields */
 function formatPaper(p: Paper): Record<string, unknown> {
   let opts: Record<string, unknown> = {};
   try { opts = p.options ? JSON.parse(p.options) : {}; } catch { opts = {}; }
+
+  let answers: unknown[] = [];
+  try { answers = JSON.parse(p.answers); } catch { answers = []; }
+
+  let fillInBlankConfig: Record<string, unknown>[] | null = null;
+  if (p.fillInBlankConfig) {
+    try { fillInBlankConfig = JSON.parse(p.fillInBlankConfig); } catch { fillInBlankConfig = null; }
+  } else if (opts['fillInBlankConfig']) {
+    fillInBlankConfig = Array.isArray(opts['fillInBlankConfig']) ? (opts['fillInBlankConfig'] as Record<string, unknown>[]) : null;
+  }
+
+  // Backwards-compatibility fallbacks
+  let fillInBlankCount = typeof opts['fillInBlankCount'] === 'number' ? opts['fillInBlankCount'] : (parseInt(String(opts['fillInBlankCount'] || 0), 10) || 0);
+  let fbPointsArray = Array.isArray(opts['fbPointsArray']) ? opts['fbPointsArray'] : [];
+  let fillBlankVideos = Array.isArray(opts['fillBlankVideos']) ? opts['fillBlankVideos'] : [];
+
+  if (Array.isArray(fillInBlankConfig)) {
+    fillInBlankCount = fillInBlankConfig.length;
+    fbPointsArray = fillInBlankConfig.map((item: Record<string, unknown>) => Number(item['points'] ?? 0));
+    fillBlankVideos = fillInBlankConfig.map((item: Record<string, unknown>) => String(item['video'] ?? ''));
+  } else {
+    // Build dynamic fillInBlankConfig from legacy fields if needed
+    if (fillInBlankCount > 0) {
+      fillInBlankConfig = [];
+      const defaultPt = Number(opts['fillInBlankPoints'] ?? 5);
+      for (let i = 0; i < fillInBlankCount; i++) {
+        fillInBlankConfig.push({
+          points: fbPointsArray[i] !== undefined ? Number(fbPointsArray[i]) : defaultPt,
+          video: fillBlankVideos[i] ? String(fillBlankVideos[i]) : '',
+          tags: {},
+        });
+      }
+    } else {
+      fillInBlankConfig = [];
+    }
+  }
+
   return {
     id: p.id,
     grade: p.grade,
@@ -20,7 +57,11 @@ function formatPaper(p: Paper): Record<string, unknown> {
     questionCount: p.questionCount,
     singlePoints: p.singlePoints,
     totalPoints: p.totalPoints,
-    answers: (() => { try { return JSON.parse(p.answers); } catch { return []; } })(),
+    answers,
+    fillInBlankConfig,
+    fillInBlankCount,
+    fbPointsArray,
+    fillBlankVideos,
     categoryId: p.categoryId ?? '',
     createTime: p.createTime,
     ...opts,
@@ -37,6 +78,13 @@ function packPaper(body: Record<string, unknown>) {
     ? JSON.stringify(body['answers'])
     : String(body['answers'] ?? '[]');
 
+  let fillInBlankConfigStr: string | null = null;
+  if (body['fillInBlankConfig'] !== undefined && body['fillInBlankConfig'] !== null) {
+    fillInBlankConfigStr = Array.isArray(body['fillInBlankConfig'])
+      ? JSON.stringify(body['fillInBlankConfig'])
+      : String(body['fillInBlankConfig']);
+  }
+
   return {
     grade: String(body['grade'] ?? ''),
     name: String(body['name'] ?? ''),
@@ -44,6 +92,7 @@ function packPaper(body: Record<string, unknown>) {
     singlePoints: Number(body['singlePoints'] ?? 0),
     totalPoints: Number(body['totalPoints'] ?? 0),
     answers: answersStr,
+    fillInBlankConfig: fillInBlankConfigStr,
     categoryId: body['categoryId'] ? String(body['categoryId']) : null,
     createTime: String(body['createTime'] ?? new Date().toLocaleString()),
     options: JSON.stringify(opts),
@@ -97,6 +146,10 @@ export class PaperRepository {
           directUpdate[field] = Array.isArray(body[field])
             ? JSON.stringify(body[field])
             : String(body[field] ?? '[]');
+        } else if (field === 'fillInBlankConfig') {
+          directUpdate[field] = body[field] !== undefined && body[field] !== null
+            ? (Array.isArray(body[field]) ? JSON.stringify(body[field]) : String(body[field]))
+            : null;
         } else if (field === 'categoryId') {
           directUpdate[field] = body[field] ? String(body[field]) : null;
         } else if (['questionCount', 'singlePoints', 'totalPoints'].includes(field)) {

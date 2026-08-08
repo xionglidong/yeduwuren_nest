@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Post, Param, Body, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Put, Post, Delete, Param, Body, BadRequestException, HttpCode, HttpStatus } from '@nestjs/common';
 import { StudentService } from './student.service';
 import { Student } from '@prisma/client';
 import { UpdateStudentPointsDto } from './dto/update-student-points.dto';
@@ -45,5 +45,11 @@ export class StudentController {
   @Get(':id')
   async getStudentById(@Param('id') id: string): Promise<Student> {
     return this.studentService.getStudentById(id);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteStudent(@Param('id') id: string): Promise<void> {
+    return this.studentService.deleteStudent(id);
   }
 }
