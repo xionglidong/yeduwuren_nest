@@ -70,4 +70,11 @@ export class StudentRepository {
       },
     });
   }
+
+  async updateLearningPower(id: string, learningPower: number): Promise<void> {
+    await this.prisma.student.update({
+      where: { id },
+      data: { learningPower },
+    });
+  }
 }

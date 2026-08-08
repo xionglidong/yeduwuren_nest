@@ -1848,35 +1848,22 @@
 
     async function updateCurrentStudentLearningPower() {
       if (!userId) return;
-      const allAnswers = await fetchJson("/api/v1/papers/submissions/records") || [];
-      const papers = await fetchJson("/api/v1/papers") || [];
-      const formula = await fetchJson("/api/v1/config/learningPowerFormula") || {
-        cPoints: 0.001,
-        cAccuracy: 0.5,
-        cDuration: 0.001,
-        cQuestions: 0.01
+      const formula = (await fetchJson("/api/v1/config/learningPowerFormula")) || {
+        cPoints: 500,
+        cAccuracy: 2,
+        cDuration: 10,
+        cQuestions: 200
       };
-      
-      const studentPoints = await fetchJson("/api/v1/students/map") || {};
-      const student = studentPoints[userId] || (studentPointsData ? studentPointsData[userId] : null);
-      if (!student) return;
-      if (studentPointsData && studentPointsData[userId] && typeof studentPointsData[userId].points === 'number') {
-        student.points = studentPointsData[userId].points;
+      const res = await fetchJson("/api/v1/students/recalculate-learning-power", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formula)
+      });
+      if (res && res.students) {
+        studentPointsData = res.students;
+      } else {
+        studentPointsData = (await fetchJson("/api/v1/students/map")) || {};
       }
-      
-      const metrics = calculateStudentLearningMetrics(userId, allAnswers, papers);
-      
-      const x = (formula.cPoints * (student.points || 0)) +
-                (formula.cAccuracy * metrics.accuracy) +
-                (formula.cDuration * metrics.durationMin) +
-                (formula.cQuestions * metrics.questions);
-      
-      const power = 100 * (1 - 1 / (1 + x));
-      student.learningPower = Math.round(power * 10) / 10;
-      
-      // 🔒 只单行 upsert 当前学生的学习力，不做全量覆写
-      await saveData(STUDENT_POINTS_KEY, student, 'upsert_single');
-      studentPointsData = studentPoints;
     }
 
     async function calculateUserRank() {
