@@ -3589,7 +3589,7 @@
           classColor = 'bg-amber-100 text-amber-700';
         }
         detailItem.className = `p-2 rounded-lg ${classColor}`;
-        detailItem.innerHTML = `<strong>第${item.questionNumber}题：</strong> ${item.statusText}<span class="ml-2"> | </span> 你的答案: <span class="font-bold">${item.yourAnswer}</span><span class="ml-2"> | </span> 正确答案: <span class="font-bold">${item.correctAnswer}</span> <span class="ml-2 font-bold text-xs bg-white/50 px-1.5 py-0.5 rounded shadow-sm">+${item.scoreEarned}分</span>`;
+        detailItem.innerHTML = `<strong>第${item.questionNumber}题：</strong> ${item.statusText}<span class="ml-2"> | </span> 你的答案: <span class="font-bold">${item.yourAnswer}</span><span class="ml-2"> | </span> 正确答案: <span class="font-bold">${typeof item.correctAnswer=="string"?item.correctAnswer:item.correctAnswer.answer}</span> <span class="ml-2 font-bold text-xs bg-white/50 px-1.5 py-0.5 rounded shadow-sm">+${item.scoreEarned}分</span>`;
         scoreDetailList.appendChild(detailItem);
       });
       if (currentPaper && currentPaper.fillInBlankCount > 0 && uploadedFbImages && uploadedFbImages.length > 0) {
