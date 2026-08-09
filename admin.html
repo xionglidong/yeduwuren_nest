@@ -4614,22 +4614,46 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
             answersConfigList.appendChild(mcTitle);
 
             for (let i = 0; i < paper.questionCount; i++) { 
-                const rawAnswer = paper.answers ? paper.answers[i] : 'A';
-                const currentAnswerStr = typeof rawAnswer === 'object' && rawAnswer !== null ? (rawAnswer.answer || 'A') : String(rawAnswer || 'A');
+                const rawAnswer = paper.answers ? paper.answers[i] : '';
+                const currentAnswerStr = typeof rawAnswer === 'object' && rawAnswer !== null ? (rawAnswer.answer || '') : String(rawAnswer || '');
                 const currentTags = typeof rawAnswer === 'object' && rawAnswer !== null ? (rawAnswer.tags || {}) : {};
                 const currentVideo = (paper.videos && paper.videos[i]) ? paper.videos[i] : '';
+                const qTypes = Array.isArray(paper.questionTypes) ? paper.questionTypes : [];
+                const isMultiple = qTypes[i] === 'multiple';
                 
                 const questionDiv = document.createElement('div'); 
                 questionDiv.className = 'border rounded-lg p-4 bg-gray-50 mb-3 space-y-3'; 
+                
+                let answerInputsHtml = '';
+                if (isMultiple) {
+                    // Multi-choice: checkboxes, answer stored as sorted string like "ABD"
+                    const checkedSet = new Set(currentAnswerStr.split('').filter(c => 'ABCD'.includes(c)));
+                    answerInputsHtml = `
+                        <div class="flex items-center space-x-1 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded">
+                            <span class="text-xs text-amber-700 font-bold mr-2">多选</span>
+                            ${['A','B','C','D'].map(opt => `
+                            <label class="inline-flex items-center px-2 py-1 rounded hover:bg-amber-100 cursor-pointer">
+                                <input type="checkbox" name="answer_multi_${i}" value="${opt}" ${checkedSet.has(opt) ? 'checked' : ''} class="form-checkbox text-amber-600 focus:ring-amber-500">
+                                <span class="ml-1 font-medium">${opt}</span>
+                            </label>`).join('')}
+                        </div>`;
+                } else {
+                    // Single-choice: radio buttons
+                    const currentSingle = currentAnswerStr || 'A';
+                    answerInputsHtml = `
+                        <div class="flex space-x-3 bg-white px-3 py-1.5 rounded border">
+                            ${['A','B','C','D'].map(opt => `
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="answer_${i}" value="${opt}" ${currentSingle === opt ? 'checked' : ''} class="form-radio text-blue-600 focus:ring-blue-500">
+                                <span class="ml-1 font-medium">${opt}</span>
+                            </label>`).join('')}
+                        </div>`;
+                }
+                
                 questionDiv.innerHTML = `
                 <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <label class="font-bold text-gray-700 w-16 flex-shrink-0">第 ${i + 1} 题</label>
-                    <div class="flex space-x-3 bg-white px-3 py-1.5 rounded border">
-                        <label class="inline-flex items-center"><input type="radio" name="answer_${i}" value="A" ${currentAnswerStr === 'A' ? 'checked' : ''} class="form-radio text-blue-600 focus:ring-blue-500"><span class="ml-1 font-medium">A</span></label>
-                        <label class="inline-flex items-center"><input type="radio" name="answer_${i}" value="B" ${currentAnswerStr === 'B' ? 'checked' : ''} class="form-radio text-blue-600 focus:ring-blue-500"><span class="ml-1 font-medium">B</span></label>
-                        <label class="inline-flex items-center"><input type="radio" name="answer_${i}" value="C" ${currentAnswerStr === 'C' ? 'checked' : ''} class="form-radio text-blue-600 focus:ring-blue-500"><span class="ml-1 font-medium">C</span></label>
-                        <label class="inline-flex items-center"><input type="radio" name="answer_${i}" value="D" ${currentAnswerStr === 'D' ? 'checked' : ''} class="form-radio text-blue-600 focus:ring-blue-500"><span class="ml-1 font-medium">D</span></label>
-                    </div>
+                    ${answerInputsHtml}
                     <div class="flex-grow flex items-center relative">
                         <i class="fa fa-play-circle absolute left-3 text-gray-400"></i>
                         <input type="text" id="video_${i}" value="${currentVideo}" placeholder="讲解视频文件名 (如: v1.mp4)" class="w-full pl-8 pr-24 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
@@ -4709,10 +4733,20 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
         if (pdfFile.startsWith('/pdf/')) pdfFile = pdfFile.slice(5);
         
         // 抓取选择题数据
+        const qTypes = currentConfigPaper.questionTypes || [];
         for (let i = 0; i < currentConfigPaper.questionCount; i++) { 
-            const selected = document.querySelector(`input[name="answer_${i}"]:checked`); 
-            if (!selected) return alert(`请为第 ${i + 1} 题选择正确答案`); 
-            const ansStr = selected.value;
+            const isMultiple = qTypes[i] === 'multiple';
+            let ansStr = '';
+            if (isMultiple) {
+                const checked = Array.from(document.querySelectorAll(`input[name="answer_multi_${i}"]:checked`));
+                const selected = checked.map(el => el.value).sort();
+                if (selected.length === 0) return alert(`第 ${i + 1} 题（多选）请至少选择一个正确答案`);
+                ansStr = selected.join('');
+            } else {
+                const selected = document.querySelector(`input[name="answer_${i}"]:checked`); 
+                if (!selected) return alert(`请为第 ${i + 1} 题选择正确答案`); 
+                ansStr = selected.value;
+            }
             const tags = getTagsEditorData('cfg_mc_' + i);
             newAnswers.push({ answer: ansStr, tags: tags }); 
             
@@ -4763,7 +4797,9 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
                 let newScore = 0; 
                 for (let i = 0; i < (answer.answers || []).length; i++) {
                     const stdAns = newAnswers[i] ? newAnswers[i].answer : '';
-                    if (answer.answers[i] === stdAns) newScore += currentConfigPaper.singlePoints; 
+                    const isMulti = (currentConfigPaper.questionTypes || [])[i] === 'multiple';
+                    const qInfo = getQuestionScore(answer.answers[i], stdAns, isMulti, currentConfigPaper.singlePoints);
+                    newScore += qInfo.score;
                 }
                 if (answer.fillBlankScore !== undefined) newScore += answer.fillBlankScore; 
                 await fetch(`/api/v1/papers/${currentConfigPaperId}/submissions/${answer.id}`, {
