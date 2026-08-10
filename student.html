@@ -2189,7 +2189,7 @@
       const questionTypes = Array.isArray(paper.questionTypes) ? paper.questionTypes : [];
       answers.forEach((answer, index) => {
         const isMultiple = questionTypes[index] === 'multiple';
-        const standard = standardAnswers[index] || '';
+        const standard = typeof standardAnswers[index] == "string" ? standardAnswers[index] :standardAnswers[index].answer || '';
         const qInfo = getQuestionScore(answer, standard, isMultiple, singlePoints);
         total += qInfo.score;
       });
