@@ -249,10 +249,11 @@
         <table class="report-table">
           <thead>
             <tr>
-              <th style="width: 25%;">题号</th>
-              <th style="width: 25%;">你的答案</th>
-              <th style="width: 25%;">正确答案</th>
-              <th style="width: 25%;">结果</th>
+              <th style="width: 13%;">题号</th>
+              <th style="width: 13%;">你的答案</th>
+              <th style="width: 13%;">正确答案</th>
+              <th style="width: 18%;">结果</th>
+              <th style="width: 25%;">题目标签</th>
             </tr>
           </thead>
           <tbody id="choiceDetails"></tbody>
@@ -267,7 +268,18 @@
           <div class="bg-white rounded-xl border px-4 py-2"><span class="text-gray-400">填空题得分</span><span id="fillScore" class="ml-2 font-bold text-gray-900">--</span></div>
           <div class="bg-white rounded-xl border px-4 py-2"><span class="text-gray-400">题目数量</span><span id="fillCount" class="ml-2 font-bold text-gray-900">--</span></div>
         </div>
-        <div id="fillDetailList" class="space-y-3 mb-5"></div>
+        <div class="overflow-hidden rounded-2xl border border-gray-200 bg-white mb-5">
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th style="width: 20%;">题号</th>
+                <th style="width: 30%;">得分 / 满分</th>
+                <th style="width: 50%;">题目标签</th>
+              </tr>
+            </thead>
+            <tbody id="fillDetailList"></tbody>
+          </table>
+        </div>
         <div class="media-grid">
           <div class="bg-white rounded-2xl border border-gray-200 p-4">
             <h3 class="font-bold text-gray-800 mb-3">学生作答图片</h3>
@@ -347,6 +359,21 @@
     function normalizeTags(tags) {
       if (Array.isArray(tags)) return Array.from(new Set(tags.map((item) => String(item || '').trim()).filter(Boolean)));
       return Array.from(new Set(String(tags || '').split(/[，,]/).map((item) => String(item || '').trim()).filter(Boolean)));
+    }
+    function getQuestionTagsList(tagsObj) {
+      if (!tagsObj) return [];
+      if (Array.isArray(tagsObj)) return normalizeTags(tagsObj);
+      if (typeof tagsObj === 'object') {
+        return normalizeTags(Object.values(tagsObj));
+      }
+      return normalizeTags(tagsObj);
+    }
+    function renderVerticalTags(tags) {
+      const normalized = getQuestionTagsList(tags);
+      if (normalized.length === 0) return '<span class="text-xs text-gray-400 font-normal">暂无标签</span>';
+      return `<div class="flex items-start gap-1 text-left">
+        ${normalized.map((tag) => `<span class="tag-badge ${tagTheme(tag)} shadow-2xs whitespace-nowrap !mr-0 !mb-0">${escapeHtmlText(tag)}</span>`).join('')}
+      </div>`;
     }
     function tagTheme(tag) {
       const text = String(tag || '');
@@ -451,13 +478,14 @@
       const standardAnswers = Array.isArray(payload.paperContent?.answers) ? payload.paperContent.answers : [];
       const options = payload.paperContent?.options || {};
       if (studentAnswers.length === 0) {
-        choiceBody.innerHTML = '<tr><td colspan="5" class="text-center text-gray-400 py-6">暂无选择题作答</td></tr>';
+        choiceBody.innerHTML = '<tr><td colspan="6" class="text-center text-gray-400 py-6">暂无选择题作答</td></tr>';
       } else {
         choiceBody.innerHTML = studentAnswers.map((answer, index) => {
           const rawCorrect = standardAnswers[index] || '';
           const correct = typeof rawCorrect === 'object' && rawCorrect !== null ? (rawCorrect.answer || '') : String(rawCorrect);
           const isMultiple = payload.paperContent?.questionTypes && payload.paperContent.questionTypes[index] === 'multiple';
           const qInfo = getQuestionScore(answer, correct, isMultiple, payload.paperContent?.singlePoints);
+          const mcTagsList = getQuestionTagsList((typeof rawCorrect === 'object' && rawCorrect !== null) ? rawCorrect.tags : {});
           
           let colorClass = 'text-red-700';
           let statusText = '回答错误';
@@ -481,7 +509,7 @@
             <td class="${colorClass} font-bold">${escapeHtmlText(answer || '未作答')}</td>
             <td class="font-bold text-gray-800">${escapeHtmlText(correct || '--')}</td>
             <td class="font-bold ${colorClass}">${statusText}</td>
-            <td class="text-gray-600 text-xs">${escapeHtmlText(optionText || '无选项内容')}</td>
+            <td class="py-2.5">${renderVerticalTags(mcTagsList)}</td>
           </tr>`;
         }).join('');
       }
@@ -494,17 +522,23 @@
         const detailList = document.getElementById('fillDetailList');
         const details = Array.isArray(payload.record?.fillInBlankDetails) ? payload.record.fillInBlankDetails : [];
         const fbPointsArray = Array.isArray(payload.paperContent?.fbPointsArray) ? payload.paperContent.fbPointsArray : [];
+        const fbConfig = Array.isArray(payload.paperContent?.fillInBlankConfig) ? payload.paperContent.fillInBlankConfig : [];
+
         detailList.innerHTML = new Array(fillCount).fill(0).map((_, index) => {
           const maxScore = fbPointsArray.length > 0 ? (fbPointsArray[index] || 0) : (payload.paperContent?.fillInBlankPoints || 0);
           const score = details[index];
           let scoreText = '--';
           if (typeof score === 'boolean') scoreText = score ? `${maxScore} / ${maxScore}` : `0 / ${maxScore}`;
           else if (score !== undefined && score !== null && score !== '') scoreText = `${score} / ${maxScore}`;
-          return `<div class="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm">
-            <span class="font-bold text-gray-800">第 ${index + 1} 题</span>
-            <span class="ml-3 text-gray-500">得分：</span>
-            <span class="font-bold text-indigo-600">${scoreText}</span>
-          </div>`;
+          
+          const fbConfigItem = fbConfig[index] || {};
+          const fbTagsList = getQuestionTagsList(fbConfigItem.tags || {});
+
+          return `<tr class="question-item">
+            <td class="font-bold text-gray-700">第 ${index + 1} 题</td>
+            <td class="font-bold text-indigo-600">${scoreText}</td>
+            <td class="py-2.5">${renderVerticalTags(fbTagsList)}</td>
+          </tr>`;
         }).join('');
         renderImageList('studentFillImages', payload.record?.fillInBlankStudentImage || []);
       }
