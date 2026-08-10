@@ -189,18 +189,18 @@
       </div>
     </section>
 
-    <!-- 阶段错题分布 (按难度、题型、知识点三维统计) -->
+    <!-- 阶段做题分布 (按难度、题型、知识点三维统计) -->
     <section class="mb-6 bg-white rounded-xl shadow-sm border border-gray-200 p-5">
       <div class="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
         <h3 class="text-lg font-bold text-gray-800 flex items-center">
-          <i class="fa fa-pie-chart text-red-500 mr-2"></i> 阶段错题分布 (按难度、题型、知识点)
+          <i class="fa fa-pie-chart text-blue-500 mr-2"></i> 阶段做题分布 (按难度、题型、知识点)
         </h3>
         <div class="text-sm font-bold text-gray-600">
-          错题总计：<span id="wrongTotalBadge" class="text-red-600 text-base font-black">0</span> 道
+          做题总计：<span id="solvedTotalBadge" class="text-blue-600 text-base font-black">0</span> 道
         </div>
       </div>
       <div id="wrongTagsContainer" class="w-full">
-        <!-- 错题三维维度卡片通过 JS 动态渲染 -->
+        <!-- 阶段做题分布三维维度卡片通过 JS 动态渲染 -->
       </div>
     </section>
 
@@ -434,7 +434,8 @@
         document.getElementById('rptCount').innerText = myStats.count;
         document.getElementById('rptWrong').innerText = myStats.wrong;
         
-        renderPhaseWrongTagsBreakdown(myStats.wrongQuestions);
+        const breakdownData = calculatePhaseQuestionBreakdown(records, g_papers);
+        renderPhaseQuestionTagsBreakdown(breakdownData);
 
         const myLearningTime = calculateLearningTimeMinutes(records);
         const lTimeEl = document.getElementById('rptLearningTime');
@@ -601,7 +602,7 @@
                     <span class="inline-flex items-center px-2 py-1 rounded-full bg-gray-100 text-gray-400 text-xs">暂无</span>
                 </td>
                 <td class="p-3 border-b border-gray-100 text-center whitespace-nowrap min-w-[80px]">
-                    <span class="px-2 py-1 bg-red-50 text-red-500 rounded text-xs font-bold border border-orange-100">未作答!</span>
+                    <span class="px-2 py-1 bg-red-50 text-red-500 rounded text-xs font-bold border border-orange-100">未提交</span>
                 </td>
                 <td class="p-3 border-b border-gray-100 text-center whitespace-nowrap">
                     <span class="px-2 py-1 bg-gray-100 rounded text-xs">无</span>
@@ -711,82 +712,194 @@
       return wrongQuestions;
     }
 
-    function renderPhaseWrongTagsBreakdown(wrongQuestions) {
+    function calculatePhaseQuestionBreakdown(records, papers) {
+      let totalQuestionsCount = 0;
+      const dimsData = [
+        { key: 'difficulty', title: '难度系数', icon: 'fa-tachometer', bg: 'bg-indigo-50/40', border: 'border-indigo-150', titleColor: 'text-indigo-900', badgeColor: 'bg-indigo-100/90 text-indigo-700', stats: {} },
+        { key: 'qType', title: '题目类型', icon: 'fa-cubes', bg: 'bg-purple-50/40', border: 'border-purple-150', titleColor: 'text-purple-900', badgeColor: 'bg-purple-100/90 text-purple-700', stats: {} },
+        { key: 'knowledge', title: '知识点', icon: 'fa-book', bg: 'bg-blue-50/40', border: 'border-blue-150', titleColor: 'text-blue-900', badgeColor: 'bg-blue-100/90 text-blue-700', stats: {} }
+      ];
+
+      function addTagStat(dimIndex, tagName, isCorrect) {
+        if (!dimsData[dimIndex].stats[tagName]) {
+          dimsData[dimIndex].stats[tagName] = { total: 0, correct: 0 };
+        }
+        dimsData[dimIndex].stats[tagName].total += 1;
+        if (isCorrect) {
+          dimsData[dimIndex].stats[tagName].correct += 1;
+        }
+      }
+
+      for (let record of records) {
+        const paper = papers.find(p => p.id === record.paperId);
+        if (!paper) continue;
+
+        if (record.answers && paper.answers) {
+          record.answers.forEach((ans, idx) => {
+            if (idx >= paper.questionCount) return;
+            totalQuestionsCount++;
+            const std = paper.answers[idx];
+            const correctAns = (typeof std === 'object' && std !== null) ? std.answer : std;
+            const isCorrect = (ans !== null && ans !== undefined && ans !== '') && (ans === correctAns);
+            const tagsObj = getQuestionTagsObj(paper, 'mc', idx);
+            const entries = Object.entries(tagsObj);
+
+            let hasDiff = false, hasType = false, hasKp = false;
+            entries.forEach(([k, v]) => {
+              const keyStr = String(k || '').trim();
+              const valStr = String(v || '').trim();
+              if (!valStr) return;
+
+              if (keyStr.includes('难度')) {
+                addTagStat(0, valStr, isCorrect);
+                hasDiff = true;
+              } else if (keyStr.includes('型') || keyStr.includes('类')) {
+                addTagStat(1, valStr, isCorrect);
+                hasType = true;
+              } else {
+                addTagStat(2, valStr, isCorrect);
+                hasKp = true;
+              }
+            });
+
+            if (!hasDiff) addTagStat(0, '未设置难度', isCorrect);
+            if (!hasType) addTagStat(1, '未设置类型', isCorrect);
+            if (!hasKp) addTagStat(2, '未设置知识点', isCorrect);
+          });
+        }
+
+        if (record.fillInBlankDetails && Array.isArray(record.fillInBlankDetails)) {
+          record.fillInBlankDetails.forEach((score, idx) => {
+            totalQuestionsCount++;
+            const maxScore = paper.fbPointsArray ? (parseFloat(paper.fbPointsArray[idx]) || 0) : (parseFloat(paper.fillInBlankPoints) || 0);
+            let isCorrect = false;
+            if (typeof score === 'boolean') {
+              isCorrect = score;
+            } else {
+              const numericScore = parseFloat(score) || 0;
+              isCorrect = maxScore > 0 ? (numericScore >= maxScore * 0.8) : (numericScore > 0);
+            }
+
+            const tagsObj = getQuestionTagsObj(paper, 'fb', idx);
+            const entries = Object.entries(tagsObj);
+
+            let hasDiff = false, hasType = false, hasKp = false;
+            entries.forEach(([k, v]) => {
+              const keyStr = String(k || '').trim();
+              const valStr = String(v || '').trim();
+              if (!valStr) return;
+
+              if (keyStr.includes('难度')) {
+                addTagStat(0, valStr, isCorrect);
+                hasDiff = true;
+              } else if (keyStr.includes('型') || keyStr.includes('类')) {
+                addTagStat(1, valStr, isCorrect);
+                hasType = true;
+              } else {
+                addTagStat(2, valStr, isCorrect);
+                hasKp = true;
+              }
+            });
+
+            if (!hasDiff) addTagStat(0, '未设置难度', isCorrect);
+            if (!hasType) addTagStat(1, '未设置类型', isCorrect);
+            if (!hasKp) addTagStat(2, '未设置知识点', isCorrect);
+          });
+        }
+      }
+
+      return { totalQuestionsCount, dimsData };
+    }
+
+    function renderPhaseQuestionTagsBreakdown(breakdownData) {
       const container = document.getElementById('wrongTagsContainer');
-      const badgeTotal = document.getElementById('wrongTotalBadge');
-      if (badgeTotal) badgeTotal.textContent = wrongQuestions.length;
+      const badgeTotal = document.getElementById('solvedTotalBadge') || document.getElementById('wrongTotalBadge');
+      const { totalQuestionsCount, dimsData } = breakdownData;
+
+      if (badgeTotal) badgeTotal.textContent = totalQuestionsCount;
       if (!container) return;
 
-      if (wrongQuestions.length === 0) {
-        container.innerHTML = `<div class="text-center py-6 text-green-600 font-bold bg-green-50/50 rounded-xl border border-green-100 flex items-center justify-center"><i class="fa fa-smile-o mr-2 text-xl"></i>本阶段太棒了，没有产生任何错题！</div>`;
+      if (totalQuestionsCount === 0) {
+        container.innerHTML = `<div class="text-center py-6 text-gray-500 font-bold bg-gray-50/50 rounded-xl border border-gray-100 flex items-center justify-center"><i class="fa fa-info-circle mr-2 text-xl"></i>本阶段暂无做题记录</div>`;
         return;
       }
 
-      // 三个维度统计配置：难度系数、题目类型、知识点
-      const dims = [
-        { key: 'difficulty', title: '难度系数', icon: 'fa-tachometer', bg: 'bg-indigo-50/40', border: 'border-indigo-150', titleColor: 'text-indigo-900', badgeColor: 'bg-indigo-100/90 text-indigo-700', dotColor: 'bg-indigo-500', counts: {} },
-        { key: 'qType', title: '题目类型', icon: 'fa-cubes', bg: 'bg-purple-50/40', border: 'border-purple-150', titleColor: 'text-purple-900', badgeColor: 'bg-purple-100/90 text-purple-700', dotColor: 'bg-purple-500', counts: {} },
-        { key: 'knowledge', title: '知识点', icon: 'fa-book', bg: 'bg-blue-50/40', border: 'border-blue-150', titleColor: 'text-blue-900', badgeColor: 'bg-blue-100/90 text-blue-700', dotColor: 'bg-blue-500', counts: {} }
-      ];
-
-      wrongQuestions.forEach(wq => {
-        const tObj = wq.tagsObj || {};
-        const entries = Object.entries(tObj);
-        
-        let hasDiff = false;
-        let hasType = false;
-        let hasKp = false;
-
-        entries.forEach(([k, v]) => {
-          const keyStr = String(k || '').trim();
-          const valStr = String(v || '').trim();
-          if (!valStr) return;
-
-          if (keyStr.includes('难度')) {
-            dims[0].counts[valStr] = (dims[0].counts[valStr] || 0) + 1;
-            hasDiff = true;
-          } else if (keyStr.includes('型') || keyStr.includes('类')) {
-            dims[1].counts[valStr] = (dims[1].counts[valStr] || 0) + 1;
-            hasType = true;
-          } else {
-            // 归入知识点
-            dims[2].counts[valStr] = (dims[2].counts[valStr] || 0) + 1;
-            hasKp = true;
-          }
-        });
-
-        if (!hasDiff) dims[0].counts['未设置难度'] = (dims[0].counts['未设置难度'] || 0) + 1;
-        if (!hasType) dims[1].counts['未设置类型'] = (dims[1].counts['未设置类型'] || 0) + 1;
-        if (!hasKp) dims[2].counts['未设置知识点'] = (dims[2].counts['未设置知识点'] || 0) + 1;
-      });
-
       let html = `<div>`;
 
-      dims.forEach(dim => {
-        const sortedTagNames = Object.keys(dim.counts).sort((a, b) => {
+      dimsData.forEach(dim => {
+        const tagNames = Object.keys(dim.stats);
+
+        const sortedTagNames = tagNames.sort((a, b) => {
+          if (dim.key === 'difficulty') {
+            const getDiffOrder = (name) => {
+              if (name.includes('简单')) return 1;
+              if (name.includes('中档')) return 2;
+              if (name.includes('较难')) return 3;
+              if (name.startsWith('未设置')) return 4;
+              return 5;
+            };
+            const diffA = getDiffOrder(a);
+            const diffB = getDiffOrder(b);
+            if (diffA !== diffB) return diffA - diffB;
+          }
           if (a.startsWith('未设置')) return 1;
           if (b.startsWith('未设置')) return -1;
-          return dim.counts[b] - dim.counts[a];
+          return dim.stats[b].total - dim.stats[a].total;
         });
 
-        const totalTagged = sortedTagNames.filter(t => !t.startsWith('未设置')).reduce((sum, t) => sum + dim.counts[t], 0);
+        const totalTagged = sortedTagNames.filter(t => !t.startsWith('未设置')).reduce((sum, t) => sum + dim.stats[t].total, 0);
 
         let itemsHtml = '';
         if (sortedTagNames.length === 0) {
           itemsHtml = `<div class="text-xs text-gray-400 text-center py-4">暂无数据</div>`;
         } else {
           sortedTagNames.forEach(tName => {
-            const cnt = dim.counts[tName];
+            const stat = dim.stats[tName];
+            const cnt = stat.total;
+            const correctCnt = stat.correct;
+            const accuracy = cnt > 0 ? ((correctCnt / cnt) * 100).toFixed(1) : '0.0';
             const isUntagged = tName.startsWith('未设置');
+
+            let badgeStyle = isUntagged ? 'bg-gray-100 text-gray-500 font-medium' : 'bg-blue-100 text-blue-700 font-bold';
+            let textColor = isUntagged ? 'text-gray-400 font-normal' : 'text-gray-800 font-bold';
+
+            if (dim.key === 'difficulty') {
+              if (tName.includes('简单')) {
+                badgeStyle = 'bg-blue-100 text-blue-700 font-bold';
+                textColor = 'text-blue-900 font-bold';
+              } else if (tName.includes('中档')) {
+                badgeStyle = 'bg-orange-100 text-orange-700 font-bold';
+                textColor = 'text-orange-900 font-bold';
+              } else if (tName.includes('较难')) {
+                badgeStyle = 'bg-red-100 text-red-700 font-bold';
+                textColor = 'text-red-900 font-bold';
+              } else if (isUntagged) {
+                badgeStyle = 'bg-gray-100 text-gray-400 font-medium';
+                textColor = 'text-gray-400 font-normal';
+              }
+            }
+
+            const numericAcc = parseFloat(accuracy);
+            let accBadgeStyle = 'bg-emerald-100 text-emerald-700 font-bold';
+            if (numericAcc < 60) {
+              accBadgeStyle = 'bg-red-100 text-red-700 font-bold';
+            } else if (numericAcc < 85) {
+              accBadgeStyle = 'bg-amber-100 text-amber-700 font-bold';
+            }
+
             itemsHtml += `
-              <div class="bg-white border border-gray-150 rounded-lg p-2.5 flex items-center justify-between shadow-2xs hover:shadow-xs transition mr-2">
+              <div class="bg-white border border-gray-150 rounded-lg p-2.5 flex items-center justify-between shadow-2xs hover:shadow-xs transition mr-2 mb-2 min-w-[210px]">
                 <div class="flex items-center space-x-2 min-w-0 pr-2">
-                  <span class="w-2 h-2 rounded-full ${isUntagged ? 'bg-gray-300' : dim.dotColor} shrink-0"></span>
-                  <span class="font-bold ${isUntagged ? 'text-gray-400 font-normal' : 'text-gray-800'} text-xs truncate" title="${escapeHtmlText(tName)}">${escapeHtmlText(tName)}</span>
+                  <span class="${textColor} text-xs truncate" title="${escapeHtmlText(tName)}">${escapeHtmlText(tName)}</span>
                 </div>
-                <span class="px-2 py-0.5 ${isUntagged ? 'bg-gray-100 text-gray-500 font-medium' : 'bg-red-100 text-red-700 font-black'} rounded-full text-xs shrink-0">
-                  ${cnt} 道
-                </span>
+                <div class="flex items-center space-x-1.5 shrink-0">
+                  <span class="px-2 py-0.5 ${badgeStyle} rounded-full text-xs shrink-0">
+                    ${cnt} 道
+                  </span>
+                  <span class="px-2 py-0.5 ${accBadgeStyle} rounded-full text-xs shrink-0" title="正确 ${correctCnt} / 共 ${cnt} 道">
+                    正确率 ${accuracy}%
+                  </span>
+                </div>
               </div>
             `;
           });

@@ -1294,9 +1294,10 @@
       if (key === '难度系数') {
         let selectedVal = cleanVal;
         if (!['简单题', '中档题', '较难题'].includes(selectedVal)) {
-          if (selectedVal.includes('1') || selectedVal.includes('2') || selectedVal.includes('易') || selectedVal.includes('简')) selectedVal = '简单题';
-          else if (selectedVal.includes('4') || selectedVal.includes('5') || selectedVal.includes('难')) selectedVal = '较难题';
-          else selectedVal = '中档题';
+          selectedVal = '简单题';
+          // if (selectedVal.includes('1') || selectedVal.includes('2') || selectedVal.includes('易') || selectedVal.includes('简')) selectedVal = '简单题';
+          // else if (selectedVal.includes('4') || selectedVal.includes('5') || selectedVal.includes('难')) selectedVal = '较难题';
+          // else selectedVal = '中档题';
         }
         return `
           <select class="tag-val flex-1 px-2 py-1 border rounded text-xs bg-gray-50 focus:bg-white focus:ring-1 focus:ring-indigo-500 font-medium text-gray-700">
@@ -1335,9 +1336,10 @@
       
       let currentKey = String(key || '').trim();
       if (!['难度系数', '知识点', '题目类型'].includes(currentKey)) {
-        if (currentKey.includes('难度')) currentKey = '难度系数';
-        else if (currentKey.includes('型') || currentKey.includes('类')) currentKey = '题目类型';
-        else currentKey = '知识点';
+        currentKey = '难度系数';
+        // if (currentKey.includes('难度')) currentKey = '难度系数';
+        // else if (currentKey.includes('型') || currentKey.includes('类')) currentKey = '题目类型';
+        // else currentKey = '知识点';
       }
 
       rowDiv.innerHTML = `
