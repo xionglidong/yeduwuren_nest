@@ -288,7 +288,7 @@
   <script>
     const KEYS = { POINTS: 'studentPoints', ANSWERS: 'studentAnswers', PAPERS: 'gradePapers' };
     
-    let g_allStudentRecords = [], g_papers = [], g_currentStudent = null, g_allPts = {}, g_allAns = [];
+    let g_allStudentRecords = [], g_papers = [], g_currentStudent = null, g_allPts = {}, g_allAns = [], g_categories = [];
 
     // 直接调用 RESTful 接口获取数据
     window.addEventListener('DOMContentLoaded', async () => {
@@ -297,16 +297,17 @@
         if (!studentId) return document.body.innerHTML = '<div class="text-center p-10 text-white">请从管理后台打开此页面</div>';
 
         try {
-            const [pts, allAns, papers] = await Promise.all([
+            const [pts, allAns, papers, categories] = await Promise.all([
                 fetch('/api/v1/students/map').then(r => r.json()).then(res => res || {}),
                 fetch('/api/v1/papers/submissions/records').then(r => r.json()).then(res => res || []),
-                fetch('/api/v1/papers').then(r => r.json()).then(res => res || [])
+                fetch('/api/v1/papers').then(r => r.json()).then(res => res || []),
+                fetch('/api/v1/papers/categories/list').then(r => r.json()).then(res => res || []).catch(() => [])
             ]);
             
             const stu = pts[studentId];
             if (!stu) return alert('未找到学生数据');
 
-            g_currentStudent = stu; g_papers = papers; g_allPts = pts; g_allAns = allAns;
+            g_currentStudent = stu; g_papers = papers; g_allPts = pts; g_allAns = allAns; g_categories = categories;
             g_allStudentRecords = allAns.filter(a => a.studentId === studentId).sort((a,b) => parseDateSafe(b.submitTime) - parseDateSafe(a.submitTime));
 
             initDatePickers(); resetDateFilter();
@@ -470,9 +471,45 @@
         const hwRecs = records.filter(r => { const p = g_papers.find(x=>x.id===r.paperId); return p && p.type === 'homework'; });
         const corrRecs = records.filter(r => { const p = g_papers.find(x=>x.id===r.paperId); return p && p.type === 'correction'; });
 
-        renderModuleList('test-list', 'test-empty', testRecs);
-        renderModuleList('hw-list', 'hw-empty', hwRecs);
-        renderModuleList('corr-list', 'corr-empty', corrRecs);
+        // 找出该学生可见但尚未提交的套题，且仅限于《按类别练习》中的套题
+        const studentId = g_currentStudent.id;
+        const studentGrade = g_currentStudent.grade || '';
+        const submittedPaperIds = new Set(g_allAns.filter(a => a.studentId === studentId).map(a => a.paperId));
+
+        // 非归档的分类 ID 集合
+        const archivedCatIds = new Set(g_categories.filter(c => c.isArchived).map(c => c.id));
+        const activeCatIds = new Set(g_categories.filter(c => !c.isArchived).map(c => c.id));
+
+        // 辅助：获取套题所属的分类 ID 列表
+        function getPaperCatIds(p) {
+            if (Array.isArray(p.categoryIds) && p.categoryIds.length > 0) return p.categoryIds;
+            if (p.categoryId) return [p.categoryId];
+            return [];
+        }
+
+        const visibleUnsubmitted = g_papers.filter(p => {
+            // 1. 未归档（套题本身未归档）
+            if (p.isArchived) return false;
+            // 2. 套题必须属于至少一个未归档的分类（即出现在「按类别练习」中）
+            const catIds = getPaperCatIds(p);
+            if (catIds.length === 0) return false;  // 没有分类 → 不在按类别练习中
+            if (!catIds.some(id => activeCatIds.has(id))) return false;  // 所有分类都已归档
+            // 3. 未提交
+            if (submittedPaperIds.has(p.id)) return false;
+            // 4. targetStudentIds 筛选
+            if (p.targetStudentIds && p.targetStudentIds.length > 0 && !p.targetStudentIds.includes(studentId)) return false;
+            // 5. 年级筛选
+            const gradeMap = { '高一': 'grade1', '高二': 'grade2', '高三': 'grade3' };
+            const studentGradeKey = gradeMap[studentGrade] || '';
+            if (studentGradeKey && p.grade && p.grade !== studentGradeKey) return false;
+            return true;
+        });
+        const unsubTestPapers = visibleUnsubmitted.filter(p => p.type === 'test' || !p.type);
+        const unsubHwPapers = visibleUnsubmitted.filter(p => p.type === 'homework');
+
+        renderModuleList('test-list', 'test-empty', testRecs, unsubTestPapers);
+        renderModuleList('hw-list', 'hw-empty', hwRecs, unsubHwPapers);
+        renderModuleList('corr-list', 'corr-empty', corrRecs, []);
 
         // 综合图表 (保留)
         renderCharts(records, g_papers, myStats.acc);
@@ -498,19 +535,21 @@
         }
     }
 
-    // 🚀 独立列表渲染引擎（附带单次排名计算）
-    function renderModuleList(tbodyId, emptyId, recs) {
+    // 🚀 独立列表渲染引擎（附带单次排名计算 + 未提交展示）
+    function renderModuleList(tbodyId, emptyId, recs, unsubPapers = []) {
         const tbody = document.getElementById(tbodyId);
         const emptyHint = document.getElementById(emptyId);
         tbody.innerHTML = '';
 
-        if(recs.length === 0) {
+        if (recs.length === 0 && unsubPapers.length === 0) {
             emptyHint.classList.remove('hidden');
             return;
         }
         emptyHint.classList.add('hidden');
         
         let html = '';
+
+        // 已提交的记录
         recs.forEach(r => {
             const p = g_papers.find(i => i.id === r.paperId);
             const max = p ? p.totalPoints : 100;
@@ -521,20 +560,19 @@
             // 实时计算该学生在此次任务中的班级单次排名
             const allScoresForPaper = g_allAns.filter(a => a.paperId === r.paperId).map(a => a.score);
             let rank = 1;
-            for(let s of allScoresForPaper) {
-                if(s > r.score) rank++; // 分数比他高的有几个，他的排名就退后几名
+            for (let s of allScoresForPaper) {
+                if (s > r.score) rank++;
             }
             const totalStudents = allScoresForPaper.length;
 
             let rankHtml = '';
             if (rank <= 3 && totalStudents >= 3) {
-                // 前三名加一点高亮色彩
                 rankHtml = `<span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded font-bold text-xs shadow-sm">第 ${rank} 名 <span class="font-normal opacity-70">/ ${totalStudents}</span></span>`;
             } else {
                 rankHtml = `<span class="px-2 py-1 bg-gray-100 rounded text-xs font-bold text-gray-600 shadow-sm">第 ${rank} 名 <span class="font-normal text-gray-400">/ ${totalStudents}</span></span>`;
             }
 
-         html += `
+            html += `
             <tr class="hover:bg-blue-50 transition-colors">
                 <td class="p-3 border-b border-gray-100 pl-4 text-gray-500 text-sm whitespace-nowrap">${dateDisplay}</td>
                 <td class="p-3 border-b border-gray-100 font-bold text-gray-700" title="${pName}">${pName}</td>
@@ -545,8 +583,32 @@
                 <td class="p-3 border-b border-gray-100 text-center whitespace-nowrap">
                     ${rankHtml}
                 </td>
-            </tr>`;   
+            </tr>`;
         });
+
+        // 未提交的套题（灰色标注）
+        unsubPapers.forEach(p => {
+            const dateDisplay = p.createTime ? p.createTime.split(' ')[0] : '未知';
+            const pName = escapeHtmlText(p.name || '未知任务');
+            const deadlineTip = p.deadline ? `<span class="ml-1 text-[10px] text-orange-500">(截止: ${p.deadline.replace('T',' ')})</span>` : '';
+            html += `
+            <tr>
+                <td class="p-3 border-b border-gray-100 pl-4 text-sm whitespace-nowrap text-gray-500">${escapeHtmlText(dateDisplay)}</td>
+                <td class="p-3 border-b border-gray-100 font-bold" title="${pName}">
+                    ${pName}${deadlineTip}
+                </td>
+                <td class="p-3 border-b border-gray-100 text-sm report-tag-cell">
+                    <span class="inline-flex items-center px-2 py-1 rounded-full bg-gray-100 text-gray-400 text-xs">暂无</span>
+                </td>
+                <td class="p-3 border-b border-gray-100 text-center whitespace-nowrap min-w-[80px]">
+                    <span class="px-2 py-1 bg-red-50 text-red-500 rounded text-xs font-bold border border-orange-100">未作答!</span>
+                </td>
+                <td class="p-3 border-b border-gray-100 text-center whitespace-nowrap">
+                    <span class="px-2 py-1 bg-gray-100 rounded text-xs">无</span>
+                </td>
+            </tr>`;
+        });
+
         tbody.innerHTML = html;
     }
 
