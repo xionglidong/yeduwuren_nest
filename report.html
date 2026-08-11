@@ -491,6 +491,20 @@
             return Array.isArray(r.correctionImages) && r.correctionImages.some(Boolean);
         });
 
+        // 在日期范围内已提交、但尚未改错的按类别练习套题（供未改错行展示）
+        const uncorrRecs = records.filter(r => {
+            const p = g_papers.find(x => x.id === r.paperId);
+            if (!p) return false;
+            const catIds = getPaperCatIds(p);
+            if (catIds.length === 0) return false;
+            if (!catIds.some(id => activeCatIds.has(id))) return false;
+            // 满分套题不需要改错
+            const totalPoints = parseFloat(p.totalPoints) || 0;
+            if (totalPoints > 0 && parseFloat(r.score) >= totalPoints) return false;
+            // 没有改错图片（未改错）
+            return !Array.isArray(r.correctionImages) || !r.correctionImages.some(Boolean);
+        });
+
         // 找出该学生可见但尚未提交的套题，且仅限于《按类别练习》中的套题
         const studentId = g_currentStudent.id;
         const studentGrade = g_currentStudent.grade || '';
@@ -518,7 +532,7 @@
 
         renderModuleList('test-list', 'test-empty', testRecs, unsubTestPapers);
         renderModuleList('hw-list', 'hw-empty', hwRecs, unsubHwPapers);
-        renderCorrectionList('corr-list', 'corr-empty', corrRecs);
+        renderCorrectionList('corr-list', 'corr-empty', corrRecs, uncorrRecs);
 
         // 综合图表 (保留)
         renderCharts(records, g_papers, myStats.acc);
@@ -544,32 +558,32 @@
         }
     }
 
-    // 整理错题列表：展示按类别练习中已提交改错的套题
-    function renderCorrectionList(tbodyId, emptyId, recs) {
+    // 整理错题列表：展示按类别练习中已改错 & 未改错的套题
+    function renderCorrectionList(tbodyId, emptyId, corrRecs, uncorrRecs = []) {
         const tbody = document.getElementById(tbodyId);
         const emptyHint = document.getElementById(emptyId);
         tbody.innerHTML = '';
 
-        if (recs.length === 0) {
+        if (corrRecs.length === 0 && uncorrRecs.length === 0) {
             emptyHint.classList.remove('hidden');
             return;
         }
         emptyHint.classList.add('hidden');
 
         let html = '';
-        // 按改错时间降序排列
-        const sorted = [...recs].sort((a, b) => {
+
+        // ── 已改错：按改错时间降序 ──
+        const sortedCorr = [...corrRecs].sort((a, b) => {
             const ta = a.correctionTime || a.submitTime || '';
             const tb = b.correctionTime || b.submitTime || '';
             return tb.localeCompare(ta);
         });
 
-        sorted.forEach(r => {
+        sortedCorr.forEach(r => {
             const p = g_papers.find(i => i.id === r.paperId);
             const max = p ? p.totalPoints : 100;
             const pName = p ? p.name : '未知套题';
             const tagHtml = renderAnswerTagBadgeHtml(r);
-            // 日期优先显示 correctionTime（改错日期），如没有则用 submitTime
             const rawDate = r.correctionTime || r.submitTime || '';
             const dateDisplay = rawDate ? rawDate.split(' ')[0] : '--';
 
@@ -583,6 +597,34 @@
                 </td>
                 <td class="p-3 border-b border-gray-100 text-center whitespace-nowrap">
                     <span class="px-2 py-1 bg-emerald-100 text-emerald-700 rounded font-bold text-xs border border-emerald-200 inline-flex items-center gap-1"><i class="fa fa-check-circle"></i>已改错</span>
+                </td>
+            </tr>`;
+        });
+
+        // ── 未改错：按提交时间降序 ──
+        const sortedUncorr = [...uncorrRecs].sort((a, b) => {
+            const ta = a.submitTime || '';
+            const tb = b.submitTime || '';
+            return tb.localeCompare(ta);
+        });
+
+        sortedUncorr.forEach(r => {
+            const p = g_papers.find(i => i.id === r.paperId);
+            const max = p ? p.totalPoints : 100;
+            const pName = p ? p.name : '未知套题';
+            const tagHtml = renderAnswerTagBadgeHtml(r);
+            const dateDisplay = r.submitTime ? r.submitTime.split(' ')[0] : '--';
+
+            html += `
+            <tr class="opacity-80 hover:bg-orange-50/50 transition-colors">
+                <td class="p-3 border-b border-gray-100 pl-4 text-gray-400 text-sm whitespace-nowrap">${dateDisplay}</td>
+                <td class="p-3 border-b border-gray-100 font-bold text-gray-500" title="${escapeHtmlText(pName)}">${escapeHtmlText(pName)}</td>
+                <td class="p-3 border-b border-gray-100 text-sm report-tag-cell"><div class="report-tag-list">${tagHtml}</div></td>
+                <td class="p-3 border-b border-gray-100 text-center whitespace-nowrap min-w-[80px]">
+                    <span class="font-bold text-gray-500 text-sm">${r.score}</span><span class="text-xs text-gray-300">/${max}</span>
+                </td>
+                <td class="p-3 border-b border-gray-100 text-center whitespace-nowrap">
+                    <span class="px-2 py-1 bg-orange-50 text-orange-500 rounded font-bold text-xs border border-orange-200 inline-flex items-center gap-1"><i class="fa fa-clock-o"></i>未改错</span>
                 </td>
             </tr>`;
         });
