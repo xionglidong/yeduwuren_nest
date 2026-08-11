@@ -247,7 +247,7 @@
         <div class="overflow-hidden rounded-lg border border-gray-200">
             <table class="w-full text-sm text-left report-module-table">
                 <thead class="bg-gray-50 text-gray-600 text-xs uppercase">
-                    <tr><th class="p-3 pl-4 w-[18%]">日期</th><th class="p-3 w-[26%]">名称</th><th class="p-3 w-[24%]">标签</th><th class="p-3 text-center w-[16%]">得分 / 总分</th><th class="p-3 text-center w-[16%]">班级排名</th></tr>
+                    <tr><th class="p-3 pl-4 w-[18%]">改错日期</th><th class="p-3 w-[28%]">套题名称</th><th class="p-3 w-[24%]">标签</th><th class="p-3 text-center w-[14%]">原始得分</th><th class="p-3 text-center w-[16%]">状态</th></tr>
                 </thead>
                 <tbody id="corr-list" class="divide-y divide-gray-100 text-gray-700"></tbody>
             </table>
@@ -470,23 +470,31 @@
         // 🚀 中部：按照Type将记录分发到三个列表
         const testRecs = records.filter(r => { const p = g_papers.find(x=>x.id===r.paperId); return p && (p.type === 'test' || !p.type); });
         const hwRecs = records.filter(r => { const p = g_papers.find(x=>x.id===r.paperId); return p && p.type === 'homework'; });
-        const corrRecs = records.filter(r => { const p = g_papers.find(x=>x.id===r.paperId); return p && p.type === 'correction'; });
 
-        // 找出该学生可见但尚未提交的套题，且仅限于《按类别练习》中的套题
-        const studentId = g_currentStudent.id;
-        const studentGrade = g_currentStudent.grade || '';
-        const submittedPaperIds = new Set(g_allAns.filter(a => a.studentId === studentId).map(a => a.paperId));
-
+        // 整理错题：按类别练习中已提交改错图片的套题
         // 非归档的分类 ID 集合
-        const archivedCatIds = new Set(g_categories.filter(c => c.isArchived).map(c => c.id));
         const activeCatIds = new Set(g_categories.filter(c => !c.isArchived).map(c => c.id));
-
-        // 辅助：获取套题所属的分类 ID 列表
         function getPaperCatIds(p) {
             if (Array.isArray(p.categoryIds) && p.categoryIds.length > 0) return p.categoryIds;
             if (p.categoryId) return [p.categoryId];
             return [];
         }
+
+        const corrRecs = records.filter(r => {
+            const p = g_papers.find(x => x.id === r.paperId);
+            if (!p) return false;
+            // 必须属于按类别练习（具有尚未归档的分类）
+            const catIds = getPaperCatIds(p);
+            if (catIds.length === 0) return false;
+            if (!catIds.some(id => activeCatIds.has(id))) return false;
+            // 必须有改错图片
+            return Array.isArray(r.correctionImages) && r.correctionImages.some(Boolean);
+        });
+
+        // 找出该学生可见但尚未提交的套题，且仅限于《按类别练习》中的套题
+        const studentId = g_currentStudent.id;
+        const studentGrade = g_currentStudent.grade || '';
+        const submittedPaperIds = new Set(g_allAns.filter(a => a.studentId === studentId).map(a => a.paperId));
 
         const visibleUnsubmitted = g_papers.filter(p => {
             // 1. 未归档（套题本身未归档）
@@ -510,7 +518,7 @@
 
         renderModuleList('test-list', 'test-empty', testRecs, unsubTestPapers);
         renderModuleList('hw-list', 'hw-empty', hwRecs, unsubHwPapers);
-        renderModuleList('corr-list', 'corr-empty', corrRecs, []);
+        renderCorrectionList('corr-list', 'corr-empty', corrRecs);
 
         // 综合图表 (保留)
         renderCharts(records, g_papers, myStats.acc);
@@ -534,6 +542,52 @@
         } else {
             el.classList.add('bg-slate-50', 'text-slate-500', 'border-transparent');
         }
+    }
+
+    // 整理错题列表：展示按类别练习中已提交改错的套题
+    function renderCorrectionList(tbodyId, emptyId, recs) {
+        const tbody = document.getElementById(tbodyId);
+        const emptyHint = document.getElementById(emptyId);
+        tbody.innerHTML = '';
+
+        if (recs.length === 0) {
+            emptyHint.classList.remove('hidden');
+            return;
+        }
+        emptyHint.classList.add('hidden');
+
+        let html = '';
+        // 按改错时间降序排列
+        const sorted = [...recs].sort((a, b) => {
+            const ta = a.correctionTime || a.submitTime || '';
+            const tb = b.correctionTime || b.submitTime || '';
+            return tb.localeCompare(ta);
+        });
+
+        sorted.forEach(r => {
+            const p = g_papers.find(i => i.id === r.paperId);
+            const max = p ? p.totalPoints : 100;
+            const pName = p ? p.name : '未知套题';
+            const tagHtml = renderAnswerTagBadgeHtml(r);
+            // 日期优先显示 correctionTime（改错日期），如没有则用 submitTime
+            const rawDate = r.correctionTime || r.submitTime || '';
+            const dateDisplay = rawDate ? rawDate.split(' ')[0] : '--';
+
+            html += `
+            <tr class="hover:bg-orange-50 transition-colors">
+                <td class="p-3 border-b border-gray-100 pl-4 text-gray-500 text-sm whitespace-nowrap">${dateDisplay}</td>
+                <td class="p-3 border-b border-gray-100 font-bold text-gray-700" title="${escapeHtmlText(pName)}">${escapeHtmlText(pName)}</td>
+                <td class="p-3 border-b border-gray-100 text-sm report-tag-cell"><div class="report-tag-list">${tagHtml}</div></td>
+                <td class="p-3 border-b border-gray-100 text-center whitespace-nowrap min-w-[80px]">
+                    <span class="font-bold text-gray-800 text-sm">${r.score}</span><span class="text-xs text-gray-400">/${max}</span>
+                </td>
+                <td class="p-3 border-b border-gray-100 text-center whitespace-nowrap">
+                    <span class="px-2 py-1 bg-emerald-100 text-emerald-700 rounded font-bold text-xs border border-emerald-200 inline-flex items-center gap-1"><i class="fa fa-check-circle"></i>已改错</span>
+                </td>
+            </tr>`;
+        });
+
+        tbody.innerHTML = html;
     }
 
     // 🚀 独立列表渲染引擎（附带单次排名计算 + 未提交展示）
