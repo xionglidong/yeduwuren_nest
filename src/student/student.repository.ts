@@ -86,4 +86,16 @@ export class StudentRepository {
       where: { id },
     });
   }
+
+  /**
+   * 按指定字段降序返回前 limit 名学生
+   * @param field  Student 表中允许排序的字段名
+   * @param limit  返回数量上限
+   */
+  async findTopByField(field: string, limit: number): Promise<Student[]> {
+    return this.prisma.student.findMany({
+      orderBy: { [field]: 'desc' },
+      take: limit,
+    });
+  }
 }

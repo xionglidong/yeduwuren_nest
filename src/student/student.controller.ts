@@ -1,7 +1,8 @@
-import { Controller, Get, Put, Post, Delete, Param, Body, BadRequestException, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Put, Post, Delete, Param, Body, BadRequestException, HttpCode, HttpStatus, Query, UsePipes, ValidationPipe } from '@nestjs/common';
 import { StudentService } from './student.service';
 import { Student } from '@prisma/client';
 import { UpdateStudentPointsDto } from './dto/update-student-points.dto';
+import { TopStudentsQueryDto } from './dto/top-students-query.dto';
 
 @Controller('api/v1/students')
 export class StudentController {
@@ -10,6 +11,16 @@ export class StudentController {
   @Get()
   async getAllStudents(): Promise<Student[]> {
     return this.studentService.getAllStudents();
+  }
+
+  /**
+   * GET /api/v1/students/top?field=points&limit=10
+   * 按指定字段降序返回前 N 名学生
+   */
+  @Get('top')
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async getTopStudents(@Query() query: TopStudentsQueryDto): Promise<Student[]> {
+    return this.studentService.getTopStudents(query.field, query.limit);
   }
 
   /** Returns { [studentId]: { name, points, grade, ... } } map for frontend compatibility */

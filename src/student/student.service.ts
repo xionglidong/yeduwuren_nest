@@ -154,4 +154,13 @@ export class StudentService {
     const updatedMap = await this.studentRepository.findAllAsMap();
     return { students: updatedMap };
   }
+
+  /**
+   * 按指定字段降序返回前 N 名学生
+   * @param field  排序字段（已由 DTO 白名单限制）
+   * @param limit  返回数量
+   */
+  async getTopStudents(field: string, limit: number): Promise<Student[]> {
+    return this.studentRepository.findTopByField(field, limit);
+  }
 }
