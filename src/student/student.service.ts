@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { StudentRepository } from './student.repository';
 import { PrismaService } from '../database/prisma.service';
 import { Student } from '@prisma/client';
@@ -162,5 +162,18 @@ export class StudentService {
    */
   async getTopStudents(field: string, limit: number): Promise<Student[]> {
     return this.studentRepository.findTopByField(field, limit);
+  }
+
+  /**
+   * 校验姓名与学号是否匹配，用于学生登录验证
+   * @param id    学号
+   * @param name  前端传入的姓名
+   */
+  async verifyStudent(id: string, name: string) {
+    const student = await this.studentRepository.getStudentInfo(id);
+    if (!student || student.name !== name) {
+      return {error:'登录失败：姓名与学号不匹配，请检查输入'}
+    }
+    return student;
   }
 }

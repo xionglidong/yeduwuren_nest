@@ -29,6 +29,17 @@ export class StudentController {
     return this.studentService.getAllStudentsMap();
   }
 
+  /**
+   * POST /api/v1/students/verify
+   * 校验姓名与学号是否匹配，用于学生登录验证
+   * 返回学生综合统计信息及各项排名
+   * 包含：姓名、年级、学号、积分、学力、做题总数、正确率、学习时长，以及各项在全体学生中的排名
+   */
+  @Post('verify')
+  async verifyStudent(@Body() body: { id: string; name: string }) {
+    return this.studentService.verifyStudent(body.id, body.name);
+  }
+
   @Post('recalculate-learning-power')
   async recalculateLearningPower(
     @Body() body: { cPoints: number; cAccuracy: number; cDuration: number; cQuestions: number },

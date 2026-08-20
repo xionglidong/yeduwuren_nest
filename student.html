@@ -377,7 +377,6 @@
       selfLearningInteractions: '/api/v1/self-learning/interactions',
       forumResourceMaterials: '/api/v1/self-learning/materials',
       publicForumMessages: '/api/v1/self-learning/forum/posts',
-      paperCategories: '/api/v1/papers/categories/list',
       timerRecords: '/api/v1/timer/records',
       currentSchoolYear: '/api/v1/config/currentSchoolYear',
       learningPowerFormula: '/api/v1/config/learningPowerFormula',
@@ -429,7 +428,6 @@
       }
     }
 
-    let userPoints = 0, userName = '', userId = '', userGrade = '', userRank = 0;
     const RANK_SYSTEM = [ { name: '学者', threshold: 0, color: '#737373' }, { name: '学徒', threshold: 10, color: '#B87333' }, { name: '学士', threshold: 50, color: '#8493A8' }, { name: '学客', threshold: 200, color: '#C69D3D' }, { name: '学匠', threshold: 500, color: '#2EA29F' }, { name: '学师', threshold: 800, color: '#4169E1' }, { name: '学霸', threshold: 1200, color: '#FF1A1A' }, { name: '学王', threshold: 1500, color: '#F16022' }, { name: '学灵', threshold: 1800, color: '#9F5CF7' }, { name: '学尊', threshold: 2000, color: '#C533FF' }, { name: '学宗', threshold: 2500, color: '#FF4D00' }, { name: '学皇', threshold: 3000, color: '#DC143C' }, { name: '学帝', threshold: 3500, color: '#D60000' }, { name: '学仙', threshold: 4000, color: '#DAA520' }, { name: '学圣', threshold: 4500, color: '#FF8C00' }, { name: '学神', threshold: 5000, color: '#FF0000' } ];
     const PAPER_STORAGE_KEY = 'gradePapers', ANSWER_STORAGE_KEY = 'studentAnswers', STUDENT_INFO_KEY = 'studentInfo', STUDENT_POINTS_KEY = 'studentPoints', EXCHANGE_RECORDS_KEY = 'exchangeRecords', PRIZES_STORAGE_KEY = 'exchangePrizes', SELF_LEARNING_STORAGE_KEY = 'selfLearningContents', SELF_LEARNING_WATCH_STORAGE_KEY = 'selfLearningWatchStats', SELF_LEARNING_INTERACTION_STORAGE_KEY = 'selfLearningInteractions', FORUM_RESOURCE_STORAGE_KEY = 'forumResourceMaterials';
     const PUBLIC_MESSAGES_KEY = 'publicForumMessages'; 
@@ -441,6 +439,8 @@
       { id: 'resources', label: '资料专区', icon: 'fa-folder-open-o', color: 'red', desc: '沉淀资料、笔记、图片和学习辅助信息。' },
       { id: 'second_hand', label: '二手专区', icon: 'fa-exchange', color: 'violet', desc: '交流闲置资料、文具或学习用品。' }
     ];
+    let allCategories = []
+    let allPapers = []
     let publicMessages = []; 
     let forumResources = [];
     let pendingChatImageBase64 = null;
@@ -498,44 +498,45 @@
     const statPapersCard = document.getElementById('statPapersCard'), statWrongQuestionsCard = document.getElementById('statWrongQuestionsCard'), statsListModal = document.getElementById('statsListModal'), statsListContent = document.getElementById('statsListContent'), statsListTitle = document.getElementById('statsListTitle'), statsListSummary = document.getElementById('statsListSummary'), statsListHead = document.getElementById('statsListHead'), statsListBody = document.getElementById('statsListBody'), statsListPagination = document.getElementById('statsListPagination'), closeStatsListModalBtn = document.getElementById('closeStatsListModalBtn'), statsListSearchWrap = document.getElementById('statsListSearchWrap'), statsListSearchInput = document.getElementById('statsListSearchInput');
     const newPaperModal = document.getElementById('new-paper-modal'), refreshPapersBtn = document.getElementById('refresh-papers-btn');
 
-    async function init() {
+    function init() {
       // studentPointsData = await fetchJson("/api/v1/students/map") || {};
       // exchangeRecords = await fetchJson("/api/v1/points/records") || [];
       // prizes = await fetchJson("/api/v1/points/prizes") || [];
       // studentInfo = await getData(STUDENT_INFO_KEY) || {};
       //await loadWrongRateLeaderboard();
-      await loadMessages();
-      if (studentInfo.name) {
-        userName = studentInfo.name;
-        userId = studentInfo.id;
-        if (studentPointsData[userId]) {
-          userGrade = studentPointsData[userId].grade || '';
-          if (studentInfo.grade !== userGrade) {
-            studentInfo.grade = userGrade;
-            await saveData(STUDENT_INFO_KEY, studentInfo);
-          }
-        } else {
-          userGrade = studentInfo.grade || '';
-        }
-        studentNameInput.value = userName;
-        studentIdInput.value = userId;
-        if (studentPointsData[userId]) userPoints = studentPointsData[userId].points;
-        document.getElementById('user-name-display').textContent = userName;
-        document.getElementById('user-id-display').textContent = `学号: ${userId} 年级：${userGrade || '未设置'}`;
-        updateUserPointsDisplay();
-        document.getElementById('login-card').classList.add('hidden');
-        userPointsCard.classList.remove('hidden');
-        exchangeHistory.classList.remove('hidden');
-        //examContainer.classList.remove('hidden');
-        //document.getElementById('module-tabs').classList.remove('hidden');
-        document.getElementById('message-board-section').classList.remove('hidden');
-        if (learningCustomSection) learningCustomSection.classList.remove('hidden');
-        await calculateUserRank();
-        await loadAndRenderPapers();
-        await loadExchangeRecords();
-        updatePrizeButtons();
-        //await checkDefaultedTimers();
-      }
+      
+      // if (studentInfo.name) {
+      //   userName = studentInfo.name;
+      //   userId = studentInfo.id;
+      //   if (studentPointsData[userId]) {
+      //     userGrade = studentPointsData[userId].grade || '';
+      //     if (studentInfo.grade !== userGrade) {
+      //       studentInfo.grade = userGrade;
+      //       await saveData(STUDENT_INFO_KEY, studentInfo);
+      //     }
+      //   } else {
+      //     userGrade = studentInfo.grade || '';
+      //   }
+      //   studentNameInput.value = userName;
+      //   studentIdInput.value = userId;
+      //   if (studentPointsData[userId]) userPoints = studentPointsData[userId].points;
+      //   document.getElementById('user-name-display').textContent = userName;
+      //   document.getElementById('user-id-display').textContent = `学号: ${userId} 年级：${userGrade || '未设置'}`;
+      //   updateUserPointsDisplay();
+      //   document.getElementById('login-card').classList.add('hidden');
+      //   userPointsCard.classList.remove('hidden');
+      //   exchangeHistory.classList.remove('hidden');
+      //   //examContainer.classList.remove('hidden');
+      //   //document.getElementById('module-tabs').classList.remove('hidden');
+      //   document.getElementById('message-board-section').classList.remove('hidden');
+      //   if (learningCustomSection) learningCustomSection.classList.remove('hidden');
+      //   await calculateUserRank();
+      //   await loadAndRenderPapers();
+      //   await loadExchangeRecords();
+      //   updatePrizeButtons();
+      //   //await checkDefaultedTimers();
+      // }
+      
       loginBtn.addEventListener('click', handleLogin);
       document.getElementById('logout-btn').addEventListener('click', handleLogout);
       document.getElementById('mobile-logout-btn').addEventListener('click', handleLogout);
@@ -599,7 +600,7 @@
       if (closeStudentCategoryModalBtn) closeStudentCategoryModalBtn.addEventListener('click', closeCategoryModal);
       if (studentCategoryModal) studentCategoryModal.addEventListener('click', (e) => { if (e.target === studentCategoryModal) closeCategoryModal(); });
       selfLearningVideoPlayer.addEventListener('timeupdate', () => {
-        if (!currentSelfLearningItem || !userId) return;
+        if (!currentSelfLearningItem || !studentInfo.id) return;
         const second = Math.floor(selfLearningVideoPlayer.currentTime || 0);
         if (second === lastSelfLearningSyncedSecond) return;
         if (second % 5 !== 0 && !selfLearningVideoPlayer.ended) return;
@@ -612,7 +613,7 @@
       const explanationVideo = document.getElementById('explanationVideo');
       if (explanationVideo) {
         explanationVideo.addEventListener('timeupdate', () => {
-          if (!currentExplanationVideoContext || !userId) return;
+          if (!currentExplanationVideoContext || !studentInfo.id) return;
           const second = Math.floor(explanationVideo.currentTime || 0);
           if (second === lastExplanationVideoSyncedSecond) return;
           if (second % 5 !== 0 && !explanationVideo.ended) return;
@@ -642,11 +643,45 @@
       const correctionUploadInput = document.getElementById('correctionUploadInput');
       correctionUploadInput.addEventListener('change', handleCorrectionUpload);
 
-      await initPrizes();
-      await loadRankingList();
+      if(localStorage.getItem("studentInfo")) {
+        studentInfo = JSON.parse(localStorage.getItem("studentInfo"))
+        render()
+      }
+      initPrizes();
+      loadRankingList();
       // initRankTabs();
-      // updateLogoutButtonState();
+      updateLogoutButtonState();
     }
+   function render() {
+
+          document.getElementById('user-name-display').textContent = studentInfo.name;
+          document.getElementById('user-id-display').textContent = `学号: ${studentInfo.id} 年级：${studentInfo.grade || '未设置'}`;
+
+          updateUserPointsDisplay();
+          calculateUserRank();
+
+          document.getElementById('login-card').classList.add('hidden');
+          userPointsCard.classList.remove('hidden'); 
+          exchangeHistory.classList.remove('hidden');
+          document.getElementById('message-board-section').classList.remove('hidden'); 
+          if (learningCustomSection) learningCustomSection.classList.remove('hidden'); 
+          learningPanelPageState[studentCategoriesContainer.id] = 1; 
+          Promise.all([
+            fetchJson("/api/v1/papers/categories/list"),
+            fetchJson("/api/v1/papers")
+          ]).then(res => {
+            allCategories = res[0]
+            allPapers = res[1]
+            loadMessages();
+          });
+          
+          // loadAndRenderPapers();
+          // renderStudentStats(); 
+          // loadExchangeRecords(); 
+          // updatePrizeButtons(); 
+          // showGeneralModal('登录成功', `欢迎 ${userName}（学号：${userId}），当前积分：${userPoints}分`, 'success'); 
+          // updateLogoutButtonState();
+   }
    function switchTab(tabName) { 
         currentModuleTab = tabName; 
         const buttons = document.querySelectorAll('#module-tabs button'); 
@@ -658,16 +693,26 @@
         loadAndRenderPapers(); 
     } 
     window.addEventListener('beforeunload', function (e) { if (!answerCardModal.classList.contains('hidden') && studentAnswers.some(a => a !== null)) { e.preventDefault(); e.returnValue = '您正在答题中，离开可能丢失未提交的进度！'; } });
-    function updateLogoutButtonState() { const logoutBtn = document.getElementById('logout-btn'), mobileLogoutBtn = document.getElementById('mobile-logout-btn'); if (userName) { logoutBtn.classList.remove('hidden'); mobileLogoutBtn.classList.remove('hidden'); } else { logoutBtn.classList.add('hidden'); mobileLogoutBtn.classList.add('hidden'); } }
+    function updateLogoutButtonState() { 
+      const logoutBtn = document.getElementById('logout-btn'), 
+      mobileLogoutBtn = document.getElementById('mobile-logout-btn'); 
+      if (studentInfo.name) { 
+        logoutBtn.classList.remove('hidden'); 
+        mobileLogoutBtn.classList.remove('hidden'); 
+      } else { 
+        logoutBtn.classList.add('hidden'); 
+        mobileLogoutBtn.classList.add('hidden'); 
+      } 
+    }
     async function handleLogout() { 
-      if (!userName) return; 
+      if (!studentInfo.name) return; 
       const modal = document.getElementById('logoutSummaryModal'),
       content = document.getElementById('logoutSummaryContent'), 
       summaryText = document.getElementById('logoutSummaryText'), 
       today = new Date().toLocaleDateString(), 
-      papers = await getVisiblePapers() || [], 
+      papers = getVisiblePapers() || [], 
       allAnswers = filterActiveAnswerRecords(await fetchJson("/api/v1/papers/submissions/records") || [], papers), 
-      todayRecords = allAnswers.filter(record => { if (record.studentId !== userId) return false; 
+      todayRecords = allAnswers.filter(record => { if (record.studentId !== studentInfo.id) return false; 
       const recordDate = new Date(record.submitTime.replace(/-/g, '/')).toLocaleDateString(); return recordDate === today; 
     }); 
     const paperCount = todayRecords.length; let todayTotalQuestions = 0, totalCorrect = 0, totalPointsEarned = 0; 
@@ -679,15 +724,42 @@
         if (record.fillInBlankDetails && Array.isArray(record.fillInBlankDetails)) totalCorrect += record.fillInBlankDetails.filter(Boolean).length; } 
         else if (record.answers) todayTotalQuestions += record.answers.length; } 
         const todayAccuracy = todayTotalQuestions > 0 ? Math.round((totalCorrect / todayTotalQuestions) * 100) : 0; 
-        const myAllRecords = allAnswers.filter(r => r.studentId === userId); 
+        const myAllRecords = allAnswers.filter(r => r.studentId === studentInfo.id); 
         let lifeTimeTotalQuestions = 0, lifeTimeCorrect = 0;
         myAllRecords.forEach(record => { const paper = papers.find(p => p.id === record.paperId); 
           if (paper) { let qCount = paper.questionCount; if (paper.fillInBlankCount) qCount += parseInt(paper.fillInBlankCount); 
             lifeTimeTotalQuestions += qCount; 
-            if (record.answers && paper.answers) record.answers.forEach((ans, idx) => { if (ans === paper.answers[idx]) lifeTimeCorrect++; }); if (record.fillInBlankDetails && Array.isArray(record.fillInBlankDetails)) lifeTimeCorrect += record.fillInBlankDetails.filter(Boolean).length; } }); const lifeTimeAccuracy = lifeTimeTotalQuestions > 0 ? Math.round((lifeTimeCorrect / lifeTimeTotalQuestions) * 100) : 0; let motivationalText = "继续加油！"; if (lifeTimeTotalQuestions === 0) motivationalText = "千里之行始于足下，期待你明天的进步！"; else if (lifeTimeTotalQuestions < 50) { if (lifeTimeAccuracy < 60) motivationalText = "万事开头难，别灰心，坚持练习一定会有收获！"; else if (lifeTimeAccuracy < 85) motivationalText = "不错的开始！保持这个节奏，继续挑战自我！"; else motivationalText = "开局完美！天赋异禀的你，未来可期！"; } else if (lifeTimeTotalQuestions < 200) { if (lifeTimeAccuracy < 60) motivationalText = "做题量上来了，建议多花点时间复盘错题，质量比数量更重要哦！"; else if (lifeTimeAccuracy < 85) motivationalText = "稳扎稳打，你的努力正在转化为实力的提升！"; else motivationalText = "状态火热！保持高正确率，你就是明日之星！"; } else { if (lifeTimeAccuracy < 60) motivationalText = "勤奋的你刷了很多题，试着慢下来复盘一下错题，磨刀不误砍柴工！"; else if (lifeTimeAccuracy < 85) motivationalText = "你是练习场上的常客了，保持现在的状态，坚持就是胜利！"; else motivationalText = "独孤求败！如此高的正确率和刷题量，你就是传说中的学霸！"; } summaryText.innerHTML = `<div class="space-y-6"><p class="text-gray-600"><span class="font-bold text-primary text-lg">${userName}</span> 同学，今日收获</p><div class="grid grid-cols-2 gap-3"><div class="bg-blue-50 p-4 rounded-2xl border border-blue-100"><p class="text-xs text-blue-500 font-bold mb-1">完成试卷</p><p class="text-2xl font-black text-blue-700">${paperCount}<span class="text-sm ml-1">套</span></p></div><div class="bg-indigo-50 p-4 rounded-2xl border border-indigo-100"><p class="text-xs text-indigo-500 font-bold mb-1">训练题目</p><p class="text-2xl font-black text-indigo-700">${todayTotalQuestions}<span class="text-sm ml-1">道</span></p></div><div class="bg-green-50 p-4 rounded-2xl border border-green-100"><p class="text-xs text-green-500 font-bold mb-1">平均正确率</p><p class="text-2xl font-black text-green-700">${todayAccuracy}%</p></div><div class="bg-orange-50 p-4 rounded-2xl border border-orange-100"><p class="text-xs text-orange-500 font-bold mb-1">获得积分</p><p class="text-2xl font-black text-orange-700">+${totalPointsEarned}</p></div></div><div class="relative bg-gray-50 p-5 rounded-2xl border border-gray-100 overflow-hidden"><i class="fa fa-quote-left absolute -top-2 -left-1 text-gray-200 text-4xl opacity-50"></i><p class="relative z-10 text-gray-600 italic leading-relaxed text-sm">${motivationalText}</p></div></div>`; modal.classList.remove('hidden'); setTimeout(() => { content.classList.remove('scale-95', 'opacity-0'); content.classList.add('scale-100', 'opacity-100'); }, 10); }
+            if (record.answers && paper.answers) 
+            record.answers.forEach((ans, idx) => { 
+          if (ans === paper.answers[idx]) lifeTimeCorrect++; }); 
+          if (record.fillInBlankDetails && Array.isArray(record.fillInBlankDetails)) 
+          lifeTimeCorrect += record.fillInBlankDetails.filter(Boolean).length;
+         } }); 
+         const lifeTimeAccuracy = lifeTimeTotalQuestions > 0 ? Math.round((lifeTimeCorrect / lifeTimeTotalQuestions) * 100) : 0; 
+         let motivationalText = "继续加油！"; 
+         if (lifeTimeTotalQuestions === 0) motivationalText = "千里之行始于足下，期待你明天的进步！"; 
+         else if (lifeTimeTotalQuestions < 50) { 
+            if (lifeTimeAccuracy < 60) motivationalText = "万事开头难，别灰心，坚持练习一定会有收获！";
+              else if (lifeTimeAccuracy < 85) motivationalText = "不错的开始！保持这个节奏，继续挑战自我！"; 
+            else motivationalText = "开局完美！天赋异禀的你，未来可期！";
+          }
+         else if (lifeTimeTotalQuestions < 200) { 
+            if (lifeTimeAccuracy < 60) motivationalText = "做题量上来了，建议多花点时间复盘错题，质量比数量更重要哦！";
+             else if (lifeTimeAccuracy < 85) motivationalText = "稳扎稳打，你的努力正在转化为实力的提升！"; 
+             else motivationalText = "状态火热！保持高正确率，你就是明日之星！"; }
+              else { if (lifeTimeAccuracy < 60) motivationalText = "勤奋的你刷了很多题，试着慢下来复盘一下错题，磨刀不误砍柴工！"; 
+              else if (lifeTimeAccuracy < 85) motivationalText = "你是练习场上的常客了，保持现在的状态，坚持就是胜利！"; 
+              else motivationalText = "独孤求败！如此高的正确率和刷题量，你就是传说中的学霸！"; }
+               summaryText.innerHTML = `<div class="space-y-6"><p class="text-gray-600"><span class="font-bold text-primary text-lg">${studentInfo.name}</span> 同学，今日收获</p><div class="grid grid-cols-2 gap-3"><div class="bg-blue-50 p-4 rounded-2xl border border-blue-100"><p class="text-xs text-blue-500 font-bold mb-1">完成试卷</p><p class="text-2xl font-black text-blue-700">${paperCount}<span class="text-sm ml-1">套</span></p></div><div class="bg-indigo-50 p-4 rounded-2xl border border-indigo-100"><p class="text-xs text-indigo-500 font-bold mb-1">训练题目</p><p class="text-2xl font-black text-indigo-700">${todayTotalQuestions}<span class="text-sm ml-1">道</span></p></div><div class="bg-green-50 p-4 rounded-2xl border border-green-100"><p class="text-xs text-green-500 font-bold mb-1">平均正确率</p><p class="text-2xl font-black text-green-700">${todayAccuracy}%</p></div><div class="bg-orange-50 p-4 rounded-2xl border border-orange-100"><p class="text-xs text-orange-500 font-bold mb-1">获得积分</p><p class="text-2xl font-black text-orange-700">+${totalPointsEarned}</p></div></div><div class="relative bg-gray-50 p-5 rounded-2xl border border-gray-100 overflow-hidden"><i class="fa fa-quote-left absolute -top-2 -left-1 text-gray-200 text-4xl opacity-50"></i><p class="relative z-10 text-gray-600 italic leading-relaxed text-sm">${motivationalText}</p></div></div>`;
+          modal.classList.remove('hidden');
+          setTimeout(() => { 
+            content.classList.remove('scale-95', 'opacity-0'); 
+            content.classList.add('scale-100', 'opacity-100'); 
+          }, 10);
+        }
     async function performLogout() { 
       document.getElementById('logoutSummaryModal').classList.add('hidden'); 
-      userName = ''; userId = ''; userPoints = 0; userGrade = ''; studentInfo = {}; 
+      studentInfo = {}; 
       await saveData(STUDENT_INFO_KEY, {}); 
       studentNameInput.value = ''; 
       studentIdInput.value = ''; 
@@ -770,17 +842,17 @@
       input.value = '';
       updateTimerEventsUI();
       
-      if (isTimingActive && currentPaper && userId) {
+      if (isTimingActive && currentPaper && studentInfo.id) {
         let timerRecords = await fetchJson("/api/v1/timer/records") || {};
         if (timerRecords[userId] && timerRecords[userId][currentPaper.id]) {
           const rec = { ...timerRecords[userId][currentPaper.id], "中途事项": interimEvents };
-          await saveTimerRecord(userId, currentPaper.id, rec);
+          await saveTimerRecord(studentInfo.id, currentPaper.id, rec);
         }
       }
     }
 
     async function startTimerOverlay() {
-      if (!currentPaper || !userId) return;
+      if (!currentPaper || !studentInfo.id) return;
       const input = document.getElementById('timerRecommendedInput');
       const recommendedVal = parseInt(input.value, 10) || 60;
       if (recommendedVal <= 0) return alert('请输入有效的推荐用时！');
@@ -792,7 +864,7 @@
         "推荐时长": recommendedVal,
         "中途事项": interimEvents
       };
-      await saveTimerRecord(userId, currentPaper.id, newRec);
+      await saveTimerRecord(studentInfo.id, currentPaper.id, newRec);
       
       input.disabled = true;
       document.getElementById('startTimerOverlayBtn').classList.add('hidden');
@@ -849,7 +921,7 @@
       rec["结束时间"] = new Date().toLocaleString();
       rec["实际做题时间"] = "超过2小时(违约)";
       rec["是否违约"] = true;
-      await saveTimerRecord(userId, currentPaper.id, rec);
+      await saveTimerRecord(studentInfo.id, currentPaper.id, rec);
 
       const freshPoints = await fetchJson("/api/v1/students/map") || {};
       if (freshPoints[userId]) {
@@ -863,7 +935,7 @@
     }
 
     async function checkDefaultedTimers() {
-      if (!userId) return;
+      if (!studentInfo.id) return;
       let timerRecords = await fetchJson("/api/v1/timer/records") || {};
       const userRecs = timerRecords[userId];
       if (!userRecs) return;
@@ -891,7 +963,7 @@
         for (const paperId in userRecs) {
           const r = userRecs[paperId];
           if (r["是否违约"]) {
-            await saveTimerRecord(userId, paperId, r);
+            await saveTimerRecord(studentInfo.id, paperId, r);
           }
         }
         const freshPoints2 = await fetchJson("/api/v1/students/map") || {};
@@ -922,42 +994,34 @@
        prizeCard.innerHTML = `<div class="w-16 h-16 ${prize.bgColor} rounded-full flex items-center justify-center mx-auto mb-3"><i class="fa ${prize.icon} ${prize.iconColor} text-2xl"></i></div><h4 class="font-medium mb-1">${prize.name}</h4><p class="text-sm text-gray-500 mb-2">${prize.description}</p><p class="text-accent font-bold">${prize.points}分</p><button class="mt-2 text-sm bg-gray-200 text-gray-500 px-3 py-1 rounded-full prize-btn" data-prize="${prize.name}">积分不足</button>`;
        prizesContainer.appendChild(prizeCard); });
        document.querySelectorAll('.prize-btn').forEach(btn => btn.addEventListener('click', handlePrizeExchange));
-       if (userName) updatePrizeButtons(); 
+       if (studentInfo.name) updatePrizeButtons(); 
       }
     
     function togglePrizeEditForm() { prizeEditForm.classList.toggle('hidden'); }
     async function savePrizeData() { const prizeName = document.getElementById('prize-name').value.trim(), prizePoints = parseInt(document.getElementById('prize-points').value), prizeDesc = document.getElementById('prize-desc').value.trim(); if (!prizeName || !prizePoints || !prizeDesc) return showGeneralModal('输入错误', '请填写完整的奖品信息', 'warning'); prizes.push({ id: 'prize_' + Date.now(), name: prizeName, points: prizePoints, description: prizeDesc, icon: 'fa-gift', iconColor: 'text-primary', bgColor: 'bg-blue-100' }); await fetchJson('/api/v1/points/prizes', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(prizes[prizes.length - 1]) }); renderPrizes(); togglePrizeEditForm(); document.getElementById('prize-name').value = ''; document.getElementById('prize-points').value = ''; document.getElementById('prize-desc').value = ''; showGeneralModal('成功', '奖品添加成功', 'success'); }
-    async function handleLogin() { 
+    async function handleLogin() {
       const name = studentNameInput.value.trim(), 
       id = studentIdInput.value.trim(); 
-      if (!name || !id) return alert('请输入姓名 and 学号'); 
-      studentPointsData = await fetchJson("/api/v1/students/map") || {}; 
-      if (!studentPointsData[id]) 
-      return alert('登录失败：该学号不存在。请联系老师添加账号。'); 
-      if (studentPointsData[id].name !== name) return alert('登录失败：姓名与学号不匹配，请检查输入。'); 
-      userName = studentPointsData[id].name; userId = id; 
-      userGrade = studentPointsData[id].grade || ''; 
-      await updateCurrentStudentLearningPower(); 
-      studentInfo = { name: userName, id: userId, grade: userGrade }; 
-      await saveData(STUDENT_INFO_KEY, studentInfo); 
-      userPoints = studentPointsData[id].points; 
-      document.getElementById('user-name-display').textContent = userName; 
-      document.getElementById('user-id-display').textContent = `学号: ${userId} 年级：${userGrade || '未设置'}`; 
-      updateUserPointsDisplay(); await calculateUserRank(); 
-      document.getElementById('login-card').classList.add('hidden'); userPointsCard.classList.remove('hidden'); 
-      exchangeHistory.classList.remove('hidden');
+      if (!name || !id) return alert('请输入姓名 和 学号'); 
+
+      fetchJson("/api/v1/students/verify",{
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({id,name})
+      }).then(res => {
+        if(res.error) {
+          alert(res.error)
+        }else{
+          studentInfo = res
+          localStorage.setItem("studentInfo",JSON.stringify(studentInfo))
+          render()
+        }
+      }).catch(err => {
+         alert(res.error)
+      })
+      // studentPointsData = await fetchJson("/api/v1/students/map") || {}; 
       //examContainer.classList.remove('hidden'); 
       //document.getElementById('module-tabs').classList.remove('hidden'); 
-      document.getElementById('message-board-section').classList.remove('hidden'); 
-      if (learningCustomSection) learningCustomSection.classList.remove('hidden'); 
-      learningPanelPageState[studentCategoriesContainer.id] = 1; 
-      await loadMessages(); 
-      await loadAndRenderPapers(); 
-      await renderStudentStats(); 
-      await loadExchangeRecords(); 
-      updatePrizeButtons(); 
-      showGeneralModal('登录成功', `欢迎 ${userName}（学号：${userId}），当前积分：${userPoints}分`, 'success'); 
-      updateLogoutButtonState();
       //await checkDefaultedTimers();
    }
 
@@ -1149,9 +1213,9 @@
     function getCurrentPaperScoreRankInfo(score, cohortFilter = '') {
       if (!currentPaper) return null;
       const userBestScore = (allAnswerRecords || [])
-        .filter((record) => record.paperId === currentPaper.id && record.studentId === userId)
+        .filter((record) => record.paperId === currentPaper.id && record.studentId === studentInfo.id)
         .reduce((best, record) => Math.max(best, getRecordTotalScore(record, currentPaper)), score || 0);
-      return { rank: calculatePaperRank(currentPaper, userId, userBestScore, cohortFilter), bestScore: userBestScore };
+      return { rank: calculatePaperRank(currentPaper, studentInfo.id, userBestScore, cohortFilter), bestScore: userBestScore };
     }
     function escapeHtmlText(value) {
       return String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -1237,8 +1301,8 @@
         .slice(0, 20);
       datalist.innerHTML = matchedNames.map((name) => `<option value="${escapeHtmlText(name)}"></option>`).join('');
     }
-    async function refreshForumPaperNameOptions() {
-      const papers = await getVisiblePapers() || [];
+    function refreshForumPaperNameOptions() {
+      const papers = getVisiblePapers() || [];
       forumPaperNameOptions = Array.from(new Set(
         papers
           .map((paper) => String(paper && paper.name ? paper.name : '').trim())
@@ -1424,7 +1488,7 @@
         scoreRankListBody.innerHTML = '<tr><td colspan="6" class="px-3 py-6 text-center text-sm text-gray-400">暂无排名数据</td></tr>';
       } else {
         scoreRankListBody.innerHTML = pageItems.map((item) => {
-          const isCurrentUser = item.studentId === userId;
+          const isCurrentUser = item.studentId === studentInfo.id;
           return `<tr class="${isCurrentUser ? 'bg-indigo-50' : 'hover:bg-gray-50'}">` +
             `<td class="px-3 py-2 text-sm font-medium text-gray-700">${escapeHtmlText(item.studentName)}</td>` +
             `<td class="px-3 py-2 text-sm text-gray-500">${item.gaokaoScore !== undefined && item.gaokaoScore !== '' ? item.gaokaoScore + '分' : '--'}</td>` +
@@ -1547,7 +1611,7 @@
         tbody.innerHTML = '<tr><td colspan="5" class="px-3 py-6 text-center text-sm text-gray-400">暂无用时排名数据</td></tr>';
       } else {
         tbody.innerHTML = pageItems.map((item) => {
-          const isCurrentUser = item.studentId === userId;
+          const isCurrentUser = item.studentId === studentInfo.id;
           return `<tr class="${isCurrentUser ? 'bg-emerald-50 font-bold' : 'hover:bg-gray-50'}">` +
             `<td class="px-3 py-2 text-sm text-gray-700">${escapeHtmlText(item.studentName)}</td>` +
             `<td class="px-3 py-2 text-sm text-gray-500">${item.gaokaoScore !== undefined && item.gaokaoScore !== '' ? item.gaokaoScore + '分' : '--'}</td>` +
@@ -1610,12 +1674,12 @@
       });
     }
     async function renderStudentStats() {
-      if (!userId) return;
+      if (!studentInfo.id) return;
       const statsDashboard = document.getElementById('stats-dashboard'), statPapers = document.getElementById('stat-papers'), statTotalQuestions = document.getElementById('stat-total-questions'), statWrongQuestions = document.getElementById('stat-wrong-questions'), statAccuracy = document.getElementById('stat-accuracy'), statTotalQuestionsRank = document.getElementById('stat-total-questions-rank'), statAccuracyRank = document.getElementById('stat-accuracy-rank');
-      const papers = await getVisiblePapers() || [];
+      const papers = getVisiblePapers() || [];
       allAnswerRecords = filterActiveAnswerRecords(await fetchJson("/api/v1/papers/submissions/records") || [], papers);
       window.g_hiddenWrongQuestions = await fetchJson("/api/v1/config/hiddenWrongQuestions") || [];
-      const userRecords = allAnswerRecords.filter(r => r.studentId === userId);
+      const userRecords = allAnswerRecords.filter(r => r.studentId === studentInfo.id);
       if (userRecords.length === 0) {
         statsDashboard.classList.remove('hidden');
         statPapers.textContent = '0';
@@ -1647,9 +1711,9 @@
         const learningMins = calculateStudentLearningTimeMinutes(studentIdKey, records);
         learningTimeMap.set(studentIdKey, learningMins);
       });
-      const totalQuestionsRank = calculateMetricRank(questionCountMap, userId);
-      const accuracyRank = calculateMetricRank(accuracyMap, userId);
-      const learningTimeRank = calculateMetricRank(learningTimeMap, userId);
+      const totalQuestionsRank = calculateMetricRank(questionCountMap, studentInfo.id);
+      const accuracyRank = calculateMetricRank(accuracyMap, studentInfo.id);
+      const learningTimeRank = calculateMetricRank(learningTimeMap, studentInfo.id);
       statPapers.textContent = userSummary.papersCount;
       statTotalQuestions.textContent = userSummary.totalQuestions;
       statWrongQuestions.textContent = userSummary.wrongQuestions;
@@ -1658,7 +1722,7 @@
       if (statAccuracyRank) statAccuracyRank.textContent = accuracyRank ? `排名：第${accuracyRank}名` : '排名：暂无';
       const learningTimeEl = document.getElementById('stat-learning-time');
       const learningTimeRankEl = document.getElementById('stat-learning-time-rank');
-      const userLearningMins = learningTimeMap.get(userId) || 0;
+      const userLearningMins = learningTimeMap.get(studentInfo.id) || 0;
       if (learningTimeEl) learningTimeEl.textContent = `${Math.round(userLearningMins / 60 * 10) / 10 }小时`;
       if (learningTimeRankEl) learningTimeRankEl.textContent = learningTimeRank ? `排名：第${learningTimeRank}名` : '排名：暂无';
       renderWrongRateLeaderboard(allAnswerRecords, papers);
@@ -1836,10 +1900,10 @@
     }
 
     async function openCompletedTasksModal() {
-      if (!userId) return;
-      const papers = await getVisiblePapers() || [];
+      if (!studentInfo.id) return;
+      const papers = getVisiblePapers() || [];
       allAnswerRecords = filterActiveAnswerRecords(await fetchJson("/api/v1/papers/submissions/records") || [], papers);
-      const userRecords = allAnswerRecords.filter((record) => record.studentId === userId).sort((a, b) => parseSubmitTimeValue(b.submitTime) - parseSubmitTimeValue(a.submitTime));
+      const userRecords = allAnswerRecords.filter((record) => record.studentId === studentInfo.id).sort((a, b) => parseSubmitTimeValue(b.submitTime) - parseSubmitTimeValue(a.submitTime));
       const latestByPaper = new Map();
       userRecords.forEach((record) => {
         if (!latestByPaper.has(record.paperId)) latestByPaper.set(record.paperId, record);
@@ -1848,7 +1912,7 @@
         const paper = papers.find((item) => item.id === latestRecord.paperId);
         const paperName = paper ? paper.name : '未知任务';
         const bestScore = paper ? userRecords.filter((item) => item.paperId === latestRecord.paperId).reduce((best, item) => Math.max(best, getRecordTotalScore(item, paper)), 0) : (parseFloat(latestRecord.score) || 0);
-        const rank = paper ? calculatePaperRank(paper, userId, bestScore) : null;
+        const rank = paper ? calculatePaperRank(paper, studentInfo.id, bestScore) : null;
         return {
           paperName,
           completeDate: latestRecord.submitTime || '未知',
@@ -1869,10 +1933,10 @@
       renderStatsListModal();
     }
     async function openWrongQuestionsModal() {
-      if (!userId) return;
-      const papers = await getVisiblePapers() || [];
+      if (!studentInfo.id) return;
+      const papers = getVisiblePapers() || [];
       allAnswerRecords = filterActiveAnswerRecords(await fetchJson("/api/v1/papers/submissions/records") || [], papers);
-      const userRecords = allAnswerRecords.filter((record) => record.studentId === userId).sort((a, b) => parseSubmitTimeValue(b.submitTime) - parseSubmitTimeValue(a.submitTime));
+      const userRecords = allAnswerRecords.filter((record) => record.studentId === studentInfo.id).sort((a, b) => parseSubmitTimeValue(b.submitTime) - parseSubmitTimeValue(a.submitTime));
       const wrongQuestions = [];
       userRecords.forEach((record) => {
         const paper = papers.find((item) => item.id === record.paperId);
@@ -1933,7 +1997,26 @@
       }, 10);
       renderStatsListModal();
     }
-    function updateUserPointsDisplay() { document.getElementById('user-points').textContent = `${userPoints} 积分`; let currentRankObj = RANK_SYSTEM[0], nextRankObj = null; for (let i = 0; i < RANK_SYSTEM.length; i++) { if (userPoints >= RANK_SYSTEM[i].threshold) { currentRankObj = RANK_SYSTEM[i]; nextRankObj = RANK_SYSTEM[i + 1] || null; } else break; } let progress = 0, nextLevelText = '已达最高段位'; if (nextRankObj) { const pointsNeeded = nextRankObj.threshold - currentRankObj.threshold, currentProgress = userPoints - currentRankObj.threshold; progress = pointsNeeded > 0 ? (currentProgress / pointsNeeded) * 100 : 100; nextLevelText = `${nextRankObj.name}`; } else progress = 100; document.getElementById('points-progress').style.width = `${progress}%`; document.querySelector('#currentRankSpan').innerHTML = `<span class="font-bold mr-2 transition-colors duration-500" style="color: ${currentRankObj.color}">${currentRankObj.name}</span>`; document.querySelector('#nextRankSpan').innerHTML = `<span class="font-bold mr-2 transition-colors duration-500" style="color: ${nextRankObj?.color || '#999'}">${nextLevelText}</span>${nextRankObj ? nextRankObj.threshold - userPoints + '分' : ''}`; }
+    function updateUserPointsDisplay() {
+      document.getElementById('user-points').textContent = `${studentInfo.points} 积分`;
+      let currentRankObj = RANK_SYSTEM[0], nextRankObj = null;
+      for (let i = 0; i < RANK_SYSTEM.length; i++) {
+        if (studentInfo.points >= RANK_SYSTEM[i].threshold) {
+          currentRankObj = RANK_SYSTEM[i]; nextRankObj = RANK_SYSTEM[i + 1] || null; 
+        } else break;
+      }
+      let progress = 0, nextLevelText = '已达最高段位';
+      if (nextRankObj) {
+        const pointsNeeded = nextRankObj.threshold - currentRankObj.threshold,
+        currentProgress = studentInfo.points - currentRankObj.threshold;
+        progress = pointsNeeded > 0 ? (currentProgress / pointsNeeded) * 100 : 100;
+        nextLevelText = `${nextRankObj.name}`; 
+      } else {
+        progress = 100
+      };
+      document.getElementById('points-progress').style.width = `${progress}%`;
+      document.querySelector('#currentRankSpan').innerHTML = `<span class="font-bold mr-2 transition-colors duration-500" style="color: ${currentRankObj.color}">${currentRankObj.name}</span>`;
+      document.querySelector('#nextRankSpan').innerHTML = `<span class="font-bold mr-2 transition-colors duration-500" style="color: ${nextRankObj?.color || '#999'}">${nextLevelText}</span>${nextRankObj ? nextRankObj.threshold - studentInfo.points + '分' : ''}`; }
     function calculateStudentLearningMetrics(studentId, allAnswers, papers) {
       const studentAnswers = allAnswers.filter(a => a.studentId === studentId);
       const paperMap = new Map((papers || []).map(p => [p.id, p]));
@@ -1972,44 +2055,12 @@
       };
     }
 
-    async function updateCurrentStudentLearningPower() {
-      if (!userId) return;
-      const formula = (await fetchJson("/api/v1/config/learningPowerFormula")) || {
-        cPoints: 500,
-        cAccuracy: 2,
-        cDuration: 10,
-        cQuestions: 200
-      };
-      const res = await fetchJson("/api/v1/students/recalculate-learning-power", {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formula)
-      });
-      if (res && res.students) {
-        studentPointsData = res.students;
-      } else {
-        studentPointsData = (await fetchJson("/api/v1/students/map")) || {};
-      }
-    }
-
-    async function calculateUserRank() {
-      studentPointsData = await fetchJson("/api/v1/students/map") || {};
-      const studentsArray = Object.values(studentPointsData);
-      
-      // Points Rank
-      const pointsArray = [...studentsArray].sort((a, b) => b.points - a.points);
-      userRank = pointsArray.findIndex(s => s.id === userId) + 1;
-      document.getElementById('user-rank').textContent = `第${userRank}名`;
-      
-      // Learning Power Rank
-      const lpArray = [...studentsArray].sort((a, b) => (b.learningPower || 0) - (a.learningPower || 0));
-      const userLpRank = lpArray.findIndex(s => s.id === userId) + 1;
-      const userLpValue = studentPointsData[userId] && studentPointsData[userId].learningPower !== undefined ? studentPointsData[userId].learningPower : '--';
-      
+    function calculateUserRank() {
+      document.getElementById('user-rank').textContent = `第${studentInfo.pointsRank}名`;
       const lpDisplay = document.getElementById('user-learning-power');
-      if (lpDisplay) lpDisplay.textContent = userLpValue + " 学力";
+      if (lpDisplay) lpDisplay.textContent = studentInfo.learningPower + " 学力";
       const lpRankDisplay = document.getElementById('user-learning-power-rank');
-      if (lpRankDisplay) lpRankDisplay.textContent = userLpRank > 0 ? `第${userLpRank}名` : '暂无';
+      if (lpRankDisplay) lpRankDisplay.textContent = studentInfo.learningPowerRank > 0 ? `第${studentInfo.learningPowerRank}名` : '暂无';
     }
 
     async function loadRankingList() {
@@ -2050,32 +2101,32 @@
         }
       }
     }
-    async function loadExchangeRecords() { exchangeRecords = await fetchJson("/api/v1/points/records") || []; const userRecords = exchangeRecords.filter(record => record.studentId === userId); if (userRecords.length === 0) { historyList.innerHTML = ''; historyList.appendChild(noExchangeHint); return; } historyList.innerHTML = ''; userRecords.forEach(record => { const historyItem = document.createElement('div'); historyItem.className = 'flex items-center justify-between p-3 border rounded-lg bg-gray-50'; historyItem.innerHTML = `<div><p class="font-medium">${record.prizeName}</p><p class="text-sm text-gray-500">${record.time}</p></div><p class="text-accent font-bold">-${record.points}分</p>`; historyList.appendChild(historyItem); }); }
-    function updatePrizeButtons() { document.querySelectorAll('.prize-card').forEach(card => { const requiredPoints = parseInt(card.dataset.points), prizeBtn = card.querySelector('.prize-btn'); if (userPoints >= requiredPoints) { prizeBtn.classList.remove('bg-gray-200', 'text-gray-500'); prizeBtn.classList.add('bg-primary/10', 'text-primary'); prizeBtn.textContent = '兑换'; prizeBtn.disabled = false; } else { prizeBtn.classList.remove('bg-primary/10', 'text-primary'); prizeBtn.classList.add('bg-gray-200', 'text-gray-500'); prizeBtn.textContent = '积分不足'; prizeBtn.disabled = true; } }); }
-    async function handlePrizeExchange() { if (!userName) return showGeneralModal('请先登录', '请先登录后再进行兑换', 'warning'); const requiredPoints = parseInt(this.closest('.prize-card').dataset.points), prizeName = this.dataset.prize; if (userPoints < requiredPoints) return showGeneralModal('兑换失败', `您的积分不足，需要${requiredPoints}分`, 'warning'); if (!confirm(`确定要兑换${prizeName}吗？将消耗${requiredPoints}积分。`)) return; try {
+    async function loadExchangeRecords() { exchangeRecords = await fetchJson("/api/v1/points/records") || []; const userRecords = exchangeRecords.filter(record => record.studentId === studentInfo.id); if (userRecords.length === 0) { historyList.innerHTML = ''; historyList.appendChild(noExchangeHint); return; } historyList.innerHTML = ''; userRecords.forEach(record => { const historyItem = document.createElement('div'); historyItem.className = 'flex items-center justify-between p-3 border rounded-lg bg-gray-50'; historyItem.innerHTML = `<div><p class="font-medium">${record.prizeName}</p><p class="text-sm text-gray-500">${record.time}</p></div><p class="text-accent font-bold">-${record.points}分</p>`; historyList.appendChild(historyItem); }); }
+    function updatePrizeButtons() { document.querySelectorAll('.prize-card').forEach(card => { const requiredPoints = parseInt(card.dataset.points), prizeBtn = card.querySelector('.prize-btn'); if (studentInfo.points >= requiredPoints) { prizeBtn.classList.remove('bg-gray-200', 'text-gray-500'); prizeBtn.classList.add('bg-primary/10', 'text-primary'); prizeBtn.textContent = '兑换'; prizeBtn.disabled = false; } else { prizeBtn.classList.remove('bg-primary/10', 'text-primary'); prizeBtn.classList.add('bg-gray-200', 'text-gray-500'); prizeBtn.textContent = '积分不足'; prizeBtn.disabled = true; } }); }
+    async function handlePrizeExchange() { if (!studentInfo.name) return showGeneralModal('请先登录', '请先登录后再进行兑换', 'warning'); const requiredPoints = parseInt(this.closest('.prize-card').dataset.points), prizeName = this.dataset.prize; if (studentInfo.points < requiredPoints) return showGeneralModal('兑换失败', `您的积分不足，需要${requiredPoints}分`, 'warning'); if (!confirm(`确定要兑换${prizeName}吗？将消耗${requiredPoints}积分。`)) return; try {
         await fetchJson('/api/v1/points/exchange', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            studentId: userId,
-            studentName: userName,
+            studentId: studentInfo.id,
+            studentName: studentInfo.name,
             prizeId: this.closest('.prize-card').dataset.id,
             prizeName: prizeName,
             points: requiredPoints
           })
         });
-        userPoints -= requiredPoints;
+        studentInfo.points -= requiredPoints;
         if (studentPointsData[userId]) {
-            studentPointsData[userId].points = userPoints;
+            studentPointsData[userId].points = studentInfo.points;
             studentPointsData[userId].lastUpdate = new Date().toLocaleString();
         }
       } catch (e) {
         return showGeneralModal('兑换失败', '网络错误，请稍后重试', 'warning');
-      } updateUserPointsDisplay(); updatePrizeButtons(); await loadExchangeRecords(); await calculateUserRank(); await loadRankingList(); showGeneralModal('兑换成功', `您已成功兑换${prizeName}，积分已扣除${requiredPoints}分`, 'success'); }
+      } updateUserPointsDisplay(); updatePrizeButtons(); await loadExchangeRecords();calculateUserRank(); await loadRankingList(); showGeneralModal('兑换成功', `您已成功兑换${prizeName}，积分已扣除${requiredPoints}分`, 'success'); }
     function showGeneralModal(title, message, type = 'success') { const modal = document.getElementById('modal'), modalContent = document.getElementById('modal-general-content'), modalIcon = document.getElementById('modal-icon'); if (type === 'success') { modalIcon.className = 'w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4'; modalIcon.innerHTML = '<i class="fa fa-check text-secondary text-2xl"></i>'; } else if (type === 'warning') { modalIcon.className = 'w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4'; modalIcon.innerHTML = '<i class="fa fa-exclamation-circle text-orange-500 text-2xl"></i>'; } document.getElementById('modal-title').textContent = title; document.getElementById('modal-message').textContent = message; modal.classList.remove('hidden'); setTimeout(() => { modalContent.classList.remove('scale-95', 'opacity-0'); modalContent.classList.add('scale-100', 'opacity-100'); }, 10); }
     // Correction Modal Handlers
     async function openCorrectionModal(paperId) {
-      const paper = (await getVisiblePapers()).find(p => p.id === paperId);
+      const paper = (getVisiblePapers()).find(p => p.id === paperId);
       if (!paper) return;
       
       currentCorrectionPaperId = paperId;
@@ -2172,7 +2223,7 @@
         let allAnswers = await fetchJson("/api/v1/papers/submissions/records") || [];
         let idx = -1;
         for (let i = allAnswers.length - 1; i >= 0; i--) {
-          if (allAnswers[i].paperId === currentCorrectionPaperId && allAnswers[i].studentId === userId) {
+          if (allAnswers[i].paperId === currentCorrectionPaperId && allAnswers[i].studentId === studentInfo.id) {
             idx = i;
             break;
           }
@@ -2325,7 +2376,7 @@
       const bucket = getSelfLearningInteractionBucket(currentSelfLearningItem.id, true);
       const likes = bucket.likes || {};
       const likeTotal = Object.keys(likes).length;
-      const liked = !!likes[userId];
+      const liked = !!likes[studentInfo.id];
       if (selfLearningLikeCount) selfLearningLikeCount.textContent = String(likeTotal);
       if (selfLearningLikeText) selfLearningLikeText.textContent = liked ? '已赞' : '点赞';
       if (selfLearningLikeBtn) selfLearningLikeBtn.className = liked ? 'px-3 py-1.5 rounded-full bg-rose-100 text-rose-600 text-sm hover:bg-rose-200' : 'px-3 py-1.5 rounded-full bg-rose-50 text-rose-600 text-sm hover:bg-rose-100';
@@ -2337,7 +2388,7 @@
         selfLearningCommentList.innerHTML = '<div class="text-xs text-gray-400">暂无评论</div>';
       } else {
         selfLearningCommentList.innerHTML = comments.map((c) => {
-          const canDelete = c.studentId === userId;
+          const canDelete = c.studentId === studentInfo.id;
           return `<div class="border-b border-gray-100 pb-1"><div class="text-xs text-gray-500 flex justify-between items-center"><span>${c.studentName || '匿名'} · ${c.timeText || ''}</span>${canDelete ? `<button class="delete-self-learning-comment text-red-500 text-[11px]" data-id="${c.id}">删除</button>` : ''}</div><div class="text-sm text-gray-700">${c.text}</div></div>`;
         }).join('');
       }
@@ -2350,37 +2401,37 @@
       if (!bucket) return;
       if (type === 'danmu' && Array.isArray(bucket.danmus)) {
         const target = bucket.danmus.find((d) => d.id === entryId);
-        if (!target || target.studentId !== userId) return;
+        if (!target || target.studentId !== studentInfo.id) return;
         bucket.danmus = bucket.danmus.filter((d) => d.id !== entryId);
       }
       if (type === 'comment' && Array.isArray(bucket.comments)) {
         const target = bucket.comments.find((c) => c.id === entryId);
-        if (!target || target.studentId !== userId) return;
+        if (!target || target.studentId !== studentInfo.id) return;
         bucket.comments = bucket.comments.filter((c) => c.id !== entryId);
       }
       await saveSelfLearningInteractions();
       await renderSelfLearningInteractions();
     }
     async function toggleSelfLearningLike() {
-      if (!currentSelfLearningItem || !userId) return;
+      if (!currentSelfLearningItem || !studentInfo.id) return;
       await ensureSelfLearningInteractionsLoaded();
       const bucket = getSelfLearningInteractionBucket(currentSelfLearningItem.id, true);
-      if (bucket.likes && bucket.likes[userId]) delete bucket.likes[userId];
+      if (bucket.likes && bucket.likes[studentInfo.id]) delete bucket.likes[studentInfo.id];
       else {
         if (!bucket.likes) bucket.likes = {};
-        bucket.likes[userId] = { studentId: userId, studentName: userName, timeText: new Date().toLocaleString(), createTime: Date.now() };
+        bucket.likes[studentInfo.id] = { studentId: studentInfo.id, studentName: studentInfo.name, timeText: new Date().toLocaleString(), createTime: Date.now() };
       }
       await saveSelfLearningInteractions();
       await renderSelfLearningInteractions();
     }
     async function sendSelfLearningDanmu() {
-      if (!currentSelfLearningItem || !userId || !selfLearningDanmuInput) return;
+      if (!currentSelfLearningItem || !studentInfo.id || !selfLearningDanmuInput) return;
       const text = selfLearningDanmuInput.value.trim();
       if (!text) return;
       await ensureSelfLearningInteractionsLoaded();
       const bucket = getSelfLearningInteractionBucket(currentSelfLearningItem.id, true);
       if (!Array.isArray(bucket.danmus)) bucket.danmus = [];
-      const danmu = { id: `dm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, studentId: userId, studentName: userName, text, videoTime: Math.floor(selfLearningVideoPlayer.currentTime || 0), createTime: Date.now(), timeText: new Date().toLocaleString() };
+      const danmu = { id: `dm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, studentId: studentInfo.id, studentName: studentInfo.name, text, videoTime: Math.floor(selfLearningVideoPlayer.currentTime || 0), createTime: Date.now(), timeText: new Date().toLocaleString() };
       bucket.danmus.push(danmu);
       selfLearningDanmuInput.value = '';
       spawnSelfLearningDanmu(text);
@@ -2388,13 +2439,13 @@
       await renderSelfLearningInteractions();
     }
     async function sendSelfLearningComment() {
-      if (!currentSelfLearningItem || !userId || !selfLearningCommentInput) return;
+      if (!currentSelfLearningItem || !studentInfo.id || !selfLearningCommentInput) return;
       const text = selfLearningCommentInput.value.trim();
       if (!text) return;
       await ensureSelfLearningInteractionsLoaded();
       const bucket = getSelfLearningInteractionBucket(currentSelfLearningItem.id, true);
       if (!Array.isArray(bucket.comments)) bucket.comments = [];
-      bucket.comments.push({ id: `cm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, studentId: userId, studentName: userName, text, createTime: Date.now(), timeText: new Date().toLocaleString() });
+      bucket.comments.push({ id: `cm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, studentId: studentInfo.id, studentName: studentInfo.name, text, createTime: Date.now(), timeText: new Date().toLocaleString() });
       selfLearningCommentInput.value = '';
       await saveSelfLearningInteractions();
       await renderSelfLearningInteractions();
@@ -2417,22 +2468,22 @@
       });
     }
     async function syncSelfLearningWatchStats(force) {
-      if (!currentSelfLearningItem || !userId) return;
+      if (!currentSelfLearningItem || !studentInfo.id) return;
       await ensureSelfLearningWatchStatsLoaded();
       const contentId = currentSelfLearningItem.id;
       const currentTime = Math.floor(selfLearningVideoPlayer.currentTime || 0);
       const duration = Math.floor(selfLearningVideoPlayer.duration || 0);
       if (!selfLearningWatchStats[contentId]) selfLearningWatchStats[contentId] = {};
-      const prev = selfLearningWatchStats[contentId][userId] || {};
+      const prev = selfLearningWatchStats[contentId][studentInfo.id] || {};
       const watchedSeconds = Math.max(prev.watchedSeconds || 0, currentTime);
       const resolvedDuration = Math.max(prev.duration || 0, duration);
       const progressPercent = resolvedDuration > 0 ? Math.min(100, Math.round((watchedSeconds / resolvedDuration) * 100)) : 0;
       if (!prev.watchedSeconds && watchedSeconds <= 0) return;
       const hasChanged = force || watchedSeconds !== (prev.watchedSeconds || 0) || resolvedDuration !== (prev.duration || 0) || progressPercent !== (prev.progressPercent || 0);
       if (!hasChanged) return;
-      selfLearningWatchStats[contentId][userId] = {
-        studentId: userId,
-        studentName: userName,
+      selfLearningWatchStats[contentId][studentInfo.id] = {
+        studentId: studentInfo.id,
+        studentName: studentInfo.name,
         watchedSeconds,
         duration: resolvedDuration,
         progressPercent,
@@ -2442,7 +2493,7 @@
       await fetch('/api/v1/self-learning/watch-stats/batch', { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(selfLearningWatchStats) });
     }
     async function syncExplanationVideoWatchStats(force) {
-      if (!currentExplanationVideoContext || !userId) return;
+      if (!currentExplanationVideoContext || !studentInfo.id) return;
       await ensureSelfLearningWatchStatsLoaded();
       const explanationVideo = document.getElementById('explanationVideo');
       if (!explanationVideo) return;
@@ -2452,16 +2503,16 @@
       if (!selfLearningWatchStats[bucketKey]) selfLearningWatchStats[bucketKey] = {};
       const currentTime = Math.floor(explanationVideo.currentTime || 0);
       const duration = Math.floor(explanationVideo.duration || 0);
-      const prev = selfLearningWatchStats[bucketKey][userId] || {};
+      const prev = selfLearningWatchStats[bucketKey][studentInfo.id] || {};
       const watchedSeconds = Math.max(prev.watchedSeconds || 0, currentTime);
       const resolvedDuration = Math.max(prev.duration || 0, duration);
       const progressPercent = resolvedDuration > 0 ? Math.min(100, Math.round((watchedSeconds / resolvedDuration) * 100)) : 0;
       if (!prev.watchedSeconds && watchedSeconds <= 0) return;
       const hasChanged = force || watchedSeconds !== (prev.watchedSeconds || 0) || resolvedDuration !== (prev.duration || 0) || progressPercent !== (prev.progressPercent || 0);
       if (!hasChanged) return;
-      selfLearningWatchStats[bucketKey][userId] = {
-        studentId: userId,
-        studentName: userName,
+      selfLearningWatchStats[bucketKey][studentInfo.id] = {
+        studentId: studentInfo.id,
+        studentName: studentInfo.name,
         watchedSeconds,
         duration: resolvedDuration,
         progressPercent,
@@ -2484,7 +2535,7 @@
     }
     async function renderSelfLearningContents(papers) {
         if (!selfLearningContentList) return;
-        const gradeFilteredContents = (selfLearningContents || []).filter((item) => item && canViewSelfLearningByGrade(item.grade, userGrade));
+        const gradeFilteredContents = (selfLearningContents || []).filter((item) => item && canViewSelfLearningByGrade(item.grade, studentInfo.grade));
         if (gradeFilteredContents.length === 0) {
             selfLearningContentList.innerHTML = '<div class="text-center text-gray-500 py-6">暂无自学内容</div>';
             renderLearningPanelPagination(selfLearningContentList, 0, 0, 1, () => {});
@@ -2548,8 +2599,8 @@
         selfLearningModalTitle.textContent = item.title || '自学内容';
         if (selfLearningModalSummary) selfLearningModalSummary.textContent = item.summary || '暂无简介';
         if (selfLearningPaperLabel) selfLearningPaperLabel.textContent = '未绑定配套题';
-        const papers = await getVisiblePapers() || [];
-        const mappedGrade = userGrade === '高一' ? 'grade1' : (userGrade === '高二' ? 'grade2' : (userGrade === '高三' ? 'grade3' : null));
+        const papers = getVisiblePapers() || [];
+        const mappedGrade = studentInfo.grade === '高一' ? 'grade1' : (studentInfo.grade === '高二' ? 'grade2' : (studentInfo.grade === '高三' ? 'grade3' : null));
         const candidatePapers = papers.filter((p) => !mappedGrade || p.grade === mappedGrade);
         const relatedPaper = item.relatedPaperId ? candidatePapers.find((p) => p.id === item.relatedPaperId) : null;
         if (selfLearningPaperLabel) selfLearningPaperLabel.textContent = relatedPaper ? `${relatedPaper.name} (${relatedPaper.totalPoints}分)` : '未绑定配套题';
@@ -2592,7 +2643,6 @@
     }
 
     // Student categories state variables & helpers
-    const PAPER_CATEGORIES_KEY = 'paperCategories';
     
     function getPaperCategoryIds(paper) {
       if (!paper) return [];
@@ -2609,15 +2659,13 @@
       return grade === 'grade1' ? '高一' : (grade === 'grade2' ? '高二' : (grade === 'grade3' ? '高三' : '自定义'));
     }
 
-    async function getVisiblePapers() {
-      const categories = await fetchJson("/api/v1/papers/categories/list") || [];
-      const papers = (await fetchJson("/api/v1/papers") || []).filter((paper) => !isArchivedPaper(paper, categories));
-      if (!userId) return papers;
-      return papers.filter(p => !p.targetStudentIds || p.targetStudentIds.length === 0 || p.targetStudentIds.includes(userId));
+    function getVisiblePapers() {
+      if (!studentInfo.id) return allPapers;
+      return allPapers.filter(p => !p.targetStudentIds || p.targetStudentIds.length === 0 || p.targetStudentIds.includes(studentInfo.id));
     }
 
     async function loadAndRenderPapers() { 
-      const papers = await getVisiblePapers() || []; 
+      const papers = getVisiblePapers() || []; 
       selfLearningContents = filterVisibleSelfLearningContents(await fetchJson("/api/v1/self-learning/contents") || [], papers);
       allAnswerRecords = filterActiveAnswerRecords(await fetchJson("/api/v1/papers/submissions/records") || [], papers); 
       updateTabBadges(papers, allAnswerRecords); // 🚀 触发红点检测
@@ -2645,7 +2693,7 @@
       studentCategoriesContainer.innerHTML = '';
       
       // 1. Filter papers by student grade first
-      const gradeFilteredPapers = papers.filter(p => canViewPaperByGrade(p.grade, userGrade));
+      const gradeFilteredPapers = papers.filter(p => canViewPaperByGrade(p.grade, studentInfo.grade));
       
       // 2. Filter categories to only include those that have at least one visible paper for this student
       const visibleCategories = categories.filter(cat => 
@@ -2870,7 +2918,7 @@
 
     
     function getLatestRecordForPaper(paperId, answers) {
-     const userRecords = answers.filter(a => a.studentId === userId && a.paperId === paperId);
+     const userRecords = answers.filter(a => a.studentId === studentInfo.id && a.paperId === paperId);
      if (userRecords.length === 0) return null;
      userRecords.sort((a, b) => new Date(b.submitTime.replace(/-/g, '/')).getTime() - new Date(a.submitTime.replace(/-/g, '/')).getTime());
      return userRecords[0];
@@ -2878,15 +2926,15 @@
 
    // 🚀 核心红点检测系统 (终极护甲版：直接使用原生时间戳比对，绝不报错)
     function updateTabBadges(papers, answers) {
-        if (!userId || !studentPointsData[userId]) return; 
+        if (!studentInfo.id || !studentPointsData[studentInfo.id]) return; 
         
         let mappedGrade = null;
-        if (userGrade === '高一') mappedGrade = 'grade1';
-        if (userGrade === '高二') mappedGrade = 'grade2';
-        if (userGrade === '高三') mappedGrade = 'grade3';
+        if (studentInfo.grade === '高一') mappedGrade = 'grade1';
+        if (studentInfo.grade === '高二') mappedGrade = 'grade2';
+        if (studentInfo.grade === '高三') mappedGrade = 'grade3';
 
         // 获取该学生的建号时间戳
-        const studentCreateTime = studentPointsData[userId].createTime || 0;
+        const studentCreateTime = studentPointsData[studentInfo.id].createTime || 0;
 
         ['test', 'homework', 'correction', 'custom'].forEach(type => {
             const hasNew = papers.some(p => {
@@ -2905,7 +2953,7 @@
                     return false; 
                 }
                 
-                const hasAnswered = answers.some(a => a.paperId === p.id && a.studentId === userId);
+                const hasAnswered = answers.some(a => a.paperId === p.id && a.studentId === studentInfo.id);
                 return !hasAnswered; 
             });
 
@@ -3040,7 +3088,7 @@
         });
       });
     }
-    async function processAndRenderPapers(papers) { const filteredPapers = papers.filter(p => { const pType = p.type || 'test'; return pType === currentModuleTab; }); const grade1Papers = filteredPapers.filter(p => p.grade === 'grade1'); const grade2Papers = filteredPapers.filter(p => p.grade === 'grade2'); const grade3Papers = filteredPapers.filter(p => p.grade === 'grade3'); grade1PaperCount.textContent = `${grade1Papers.length}套`; grade2PaperCount.textContent = `${grade2Papers.length}套`; grade3PaperCount.textContent = `${grade3Papers.length}套`; await renderPaperList(grade1PaperList, grade1Papers); await renderPaperList(grade2PaperList, grade2Papers); await renderPaperList(grade3PaperList, grade3Papers); const grade1Section = document.getElementById('grade1'), grade2Section = document.getElementById('grade2'), grade3Section = document.getElementById('grade3'); if (!userGrade) { grade1Section.classList.remove('hidden'); grade2Section.classList.remove('hidden'); grade3Section.classList.remove('hidden'); } else { grade1Section.classList.add('hidden'); grade2Section.classList.add('hidden'); grade3Section.classList.add('hidden'); if (userGrade === '高一') grade1Section.classList.remove('hidden'); if (userGrade === '高二') grade2Section.classList.remove('hidden'); if (userGrade === '高三') grade3Section.classList.remove('hidden'); } await renderStudentStats(); }
+    async function processAndRenderPapers(papers) { const filteredPapers = papers.filter(p => { const pType = p.type || 'test'; return pType === currentModuleTab; }); const grade1Papers = filteredPapers.filter(p => p.grade === 'grade1'); const grade2Papers = filteredPapers.filter(p => p.grade === 'grade2'); const grade3Papers = filteredPapers.filter(p => p.grade === 'grade3'); grade1PaperCount.textContent = `${grade1Papers.length}套`; grade2PaperCount.textContent = `${grade2Papers.length}套`; grade3PaperCount.textContent = `${grade3Papers.length}套`; await renderPaperList(grade1PaperList, grade1Papers); await renderPaperList(grade2PaperList, grade2Papers); await renderPaperList(grade3PaperList, grade3Papers); const grade1Section = document.getElementById('grade1'), grade2Section = document.getElementById('grade2'), grade3Section = document.getElementById('grade3'); if (!studentInfo.grade) { grade1Section.classList.remove('hidden'); grade2Section.classList.remove('hidden'); grade3Section.classList.remove('hidden'); } else { grade1Section.classList.add('hidden'); grade2Section.classList.add('hidden'); grade3Section.classList.add('hidden'); if (studentInfo.grade === '高一') grade1Section.classList.remove('hidden'); if (studentInfo.grade === '高二') grade2Section.classList.remove('hidden'); if (studentInfo.grade === '高三') grade3Section.classList.remove('hidden'); } await renderStudentStats(); }
     function isPaperExpired(paper) {
       if (!paper || !paper.deadline) return false;
       try {
@@ -3055,8 +3103,8 @@
         return false;
       }
     }
-    async function getLatestAnswerRecord(paperId) { const userRecords = allAnswerRecords.filter(a => a.studentId === userId && a.paperId === paperId); if (userRecords.length === 0) return null; userRecords.sort((a, b) => new Date(b.submitTime).getTime() - new Date(a.submitTime).getTime()); return userRecords[0]; }
-    function getBestAnswerScore(paper) { const userRecords = allAnswerRecords.filter(a => a.studentId === userId && a.paperId === paper.id); if (userRecords.length === 0) return 0; return userRecords.reduce((best, item) => Math.max(best, getRecordTotalScore(item, paper)), 0); }
+    async function getLatestAnswerRecord(paperId) { const userRecords = allAnswerRecords.filter(a => a.studentId === studentInfo.id && a.paperId === paperId); if (userRecords.length === 0) return null; userRecords.sort((a, b) => new Date(b.submitTime).getTime() - new Date(a.submitTime).getTime()); return userRecords[0]; }
+    function getBestAnswerScore(paper) { const userRecords = allAnswerRecords.filter(a => a.studentId === studentInfo.id && a.paperId === paper.id); if (userRecords.length === 0) return 0; return userRecords.reduce((best, item) => Math.max(best, getRecordTotalScore(item, paper)), 0); }
     async function renderPaperList(container, papers) {
       if (papers.length === 0) {
         container.innerHTML = '<div class="text-center text-gray-500 py-6">该模块暂无新任务</div>';
@@ -3143,8 +3191,8 @@
     }
     
     async function showHistoryDetailModal(paperId) { 
-        const paper = (await getVisiblePapers()).find(p => p.id === paperId); if (!paper) return; 
-        const userRecords = allAnswerRecords.filter(a => a.studentId === userId && a.paperId === paperId); if (userRecords.length === 0) return alert('未找到您的作答记录。'); userRecords.sort((a, b) => new Date(b.submitTime).getTime() - new Date(a.submitTime).getTime()); const latestRecord = userRecords[0]; const displayScore = getRecordTotalScore(latestRecord, paper); historyModalTitle.textContent = `${paper.name} - 历史作答详情`; historyScoreDisplay.textContent = `${displayScore}/${paper.totalPoints}分`; historySubmitTime.textContent = latestRecord.submitTime; const timeElapsed = latestRecord.timeElapsed || 0; historyTimeDisplay.textContent = `${String(Math.floor(timeElapsed / 60)).padStart(2, '0')}:${String(timeElapsed % 60).padStart(2, '0')}`; historyDetailsList.innerHTML = ''; 
+        const paper = (getVisiblePapers()).find(p => p.id === paperId); if (!paper) return; 
+        const userRecords = allAnswerRecords.filter(a => a.studentId === studentInfo.id && a.paperId === paperId); if (userRecords.length === 0) return alert('未找到您的作答记录。'); userRecords.sort((a, b) => new Date(b.submitTime).getTime() - new Date(a.submitTime).getTime()); const latestRecord = userRecords[0]; const displayScore = getRecordTotalScore(latestRecord, paper); historyModalTitle.textContent = `${paper.name} - 历史作答详情`; historyScoreDisplay.textContent = `${displayScore}/${paper.totalPoints}分`; historySubmitTime.textContent = latestRecord.submitTime; const timeElapsed = latestRecord.timeElapsed || 0; historyTimeDisplay.textContent = `${String(Math.floor(timeElapsed / 60)).padStart(2, '0')}:${String(timeElapsed % 60).padStart(2, '0')}`; historyDetailsList.innerHTML = ''; 
         if (historyViewPdfBtn) { const pdfFile = paper && paper.pdfFile ? String(paper.pdfFile).trim() : ''; if (pdfFile) { historyViewPdfBtn.classList.remove('hidden'); historyViewPdfBtn.onclick = () => openPdfFile(pdfFile); } else { historyViewPdfBtn.classList.add('hidden'); historyViewPdfBtn.onclick = null; } }
         latestRecord.answers.forEach((ans, i) => {
           const isMultiple = paper.questionTypes && paper.questionTypes[i] === 'multiple';
@@ -3238,8 +3286,8 @@
     document.getElementById('closeVideoPlayerBtn').addEventListener('click', closeVideoPlayer);
 
     async function openAnswerCard(paperId) {
-      if (!userName) return showGeneralModal('请先登录', '请先登录后再进行答题', 'warning');
-      const papers = await getVisiblePapers() || []; currentPaper = papers.find(p => p.id === paperId); if (!currentPaper) return;
+      if (!studentInfo.name) return showGeneralModal('请先登录', '请先登录后再进行答题', 'warning');
+      const papers = getVisiblePapers() || []; currentPaper = papers.find(p => p.id === paperId); if (!currentPaper) return;
       const latestRecord = await getLatestAnswerRecord(paperId);
       if (isPaperExpired(currentPaper) && latestRecord === null) {
         return showGeneralModal('已截止', `该套题提交已截止 (${currentPaper.deadline ? currentPaper.deadline.replace('T', ' ') : ''})，无法进行作答！`, 'warning');
@@ -3294,7 +3342,7 @@
       document.getElementById('hideTimerOverlayBtn').classList.add('hidden');
       
       let timerRecords = await fetchJson("/api/v1/timer/records") || {};
-      const userRecs = timerRecords[userId] || {};
+      const userRecs = timerRecords[studentInfo.id] || {};
       const activeRec = userRecs[paperId];
       
       const eventsArea = document.getElementById('timerEventsArea');
@@ -3535,23 +3583,23 @@
       stopTimer();
       isTimingActive = false;
       let timerRecords = await fetchJson("/api/v1/timer/records") || {};
-      if (!timerRecords[userId]) timerRecords[userId] = {};
-      if (!timerRecords[userId][currentPaper.id]) {
+      if (!timerRecords[studentInfo.id]) timerRecords[studentInfo.id] = {};
+      if (!timerRecords[studentInfo.id][currentPaper.id]) {
         const recommendedInput = document.getElementById('timerRecommendedInput');
         const recommendedVal = parseInt(recommendedInput?.value, 10) || 60;
-        timerRecords[userId][currentPaper.id] = {
+        timerRecords[studentInfo.id][currentPaper.id] = {
           "开始时间": new Date().toLocaleString(),
           "结束时间": "",
           "推荐时长": recommendedVal,
           "中途事项": interimEvents
         };
       }
-      const rec = timerRecords[userId][currentPaper.id];
+      const rec = timerRecords[studentInfo.id][currentPaper.id];
       rec["结束时间"] = new Date().toLocaleString();
       const minutes = Math.floor(secondsElapsed / 60);
       const secs = secondsElapsed % 60;
       rec["实际做题时间"] = `${minutes}分${secs}秒`;
-      await saveTimerRecord(userId, currentPaper.id, rec);
+      await saveTimerRecord(studentInfo.id, currentPaper.id, rec);
       let score = 0; const scoreDetails = [];
       if (currentPaper.questionCount > 0) { 
           studentAnswers.forEach((answer, index) => {
@@ -3572,12 +3620,12 @@
       }
       if (currentPaper.fillInBlankCount > 0) score += (fbSelfScore || 0);
       let allAnswers = await fetchJson("/api/v1/papers/submissions/records") || [];
-      const previousRecords = allAnswers.filter(a => a.paperId === currentPaper.id && a.studentId === userId);
+      const previousRecords = allAnswers.filter(a => a.paperId === currentPaper.id && a.studentId === studentInfo.id);
       const isFirstSubmission = previousRecords.length === 0;
       const previousBestScore = previousRecords.reduce((best, item) => Math.max(best, getRecordTotalScore(item, currentPaper)), 0);
       // 🚀 核心升级：将多图数组传给服务器
       const finalRecommendedMinutes = rec ? (parseInt(rec["推荐时长"], 10) || 60) : 60;
-      const answerRecord = { paperId: currentPaper.id, studentId: userId, studentName: userName, answers: studentAnswers, score: score, totalPoints: currentPaper.totalPoints, timeElapsed: secondsElapsed, isFirstSubmission: isFirstSubmission, fillInBlankStudentImage: uploadedFbImages, fillInBlankScore: fbSelfScore || 0, fillInBlankDetails: fbJudgments, draftImages: uploadedDraftImages, submitTime: new Date().toLocaleString(), recommendedTime: finalRecommendedMinutes, interimEvents: interimEvents, actualTimeElapsed: secondsElapsed };
+      const answerRecord = { paperId: currentPaper.id, studentId: studentInfo.id, studentName: studentInfo.name, answers: studentAnswers, score: score, totalPoints: currentPaper.totalPoints, timeElapsed: secondsElapsed, isFirstSubmission: isFirstSubmission, fillInBlankStudentImage: uploadedFbImages, fillInBlankScore: fbSelfScore || 0, fillInBlankDetails: fbJudgments, draftImages: uploadedDraftImages, submitTime: new Date().toLocaleString(), recommendedTime: finalRecommendedMinutes, interimEvents: interimEvents, actualTimeElapsed: secondsElapsed };
       allAnswers.push(answerRecord); 
       try {
           await saveData(ANSWER_STORAGE_KEY, allAnswers, "submitAllAnswers");
@@ -3586,19 +3634,18 @@
           const bestScoreAfterSubmit = Math.max(previousBestScore, score);
           const pointsGain = Math.max(0, bestScoreAfterSubmit - previousBestScore);
           let message = '';
-          if (!studentPointsData[userId]) studentPointsData[userId] = { name: userName, id: userId, grade: userGrade || '', points: 0, createTime: Date.now(), lastUpdate: new Date().toLocaleString() };
+          if (!studentPointsData[studentInfo.id]) studentPointsData[studentInfo.id] = { name: studentInfo.name, id: studentInfo.id, grade: studentInfo.grade || '', points: 0, createTime: Date.now(), lastUpdate: new Date().toLocaleString() };
           if (pointsGain > 0) {
-              studentPointsData[userId].points += pointsGain;
-              studentPointsData[userId].lastUpdate = new Date().toLocaleString();
-              userPoints = studentPointsData[userId].points;
-              await saveData(STUDENT_POINTS_KEY, studentPointsData[userId], 'upsert_single');
+              studentPointsData[studentInfo.id].points += pointsGain;
+              studentPointsData[studentInfo.id].lastUpdate = new Date().toLocaleString();
+              studentInfo.points = studentPointsData[studentInfo.id].points;
+              await saveData(STUDENT_POINTS_KEY, studentPointsData[studentInfo.id], 'upsert_single');
               if (isFirstSubmission) message = `本次答题得分 ${score} 分 已加入您的总积分！`;
               else message = `本次刷新该套题历史最高分（${previousBestScore} → ${bestScoreAfterSubmit}），为您增加 ${pointsGain} 分 积分。`;
           } else {
               message = `本次得分 ${score} 分，未超过历史最高分 ${previousBestScore} 分，积分不变。`;
           }
-          await updateCurrentStudentLearningPower();
-          closeAnswerModal(); showScoreDetailModal(score, currentPaper.totalPoints, scoreDetails, message, secondsElapsed); await calculateUserRank(); await loadRankingList(); await loadAndRenderPapers(); updatePrizeButtons();
+          closeAnswerModal(); showScoreDetailModal(score, currentPaper.totalPoints, scoreDetails, message, secondsElapsed); calculateUserRank(); await loadRankingList(); await loadAndRenderPapers(); updatePrizeButtons();
       } finally { submitAllBtn.disabled = false; submitAllBtn.innerHTML = '提交所有答案'; }
     }
 
@@ -3631,7 +3678,7 @@
       const selectedCohort = document.getElementById('rankCohortFilter') ? document.getElementById('rankCohortFilter').value : '';
       const scoreRankInfo = getCurrentPaperScoreRankInfo(score, selectedCohort);
       if (scoreRankDisplay) scoreRankDisplay.textContent = scoreRankInfo && scoreRankInfo.rank ? `本套题最高分：${scoreRankInfo.bestScore}分，排名：第${scoreRankInfo.rank}名` : '本套题最高分排名：暂无';
-      const timeRank = calculatePaperTimeRank(currentPaper, userId, timeElapsed, selectedCohort);
+      const timeRank = calculatePaperTimeRank(currentPaper, studentInfo.id, timeElapsed, selectedCohort);
       const scoreTimeRankDisplay = document.getElementById('scoreTimeRankDisplay');
       if (scoreTimeRankDisplay) {
         scoreTimeRankDisplay.textContent = timeRank ? `本套题最快用时排名：第${timeRank}名` : '本套题最快用时排名：暂无';
@@ -3645,7 +3692,7 @@
       populateRankCohortFilter();
       const filterSelect = document.getElementById('rankCohortFilter');
       if (filterSelect) {
-        const userCohort = studentPointsData[userId] ? studentPointsData[userId].cohort : '';
+        const userCohort = studentPointsData[studentInfo.id] ? studentPointsData[studentInfo.id].cohort : '';
         if (userCohort && Array.from(filterSelect.options).some(opt => opt.value === String(userCohort))) {
           filterSelect.value = String(userCohort);
         } else if (filterSelect.options.length > 0) {
@@ -3761,7 +3808,7 @@
     }
 
     document.getElementById('chat-image-input').addEventListener('change', async function(e) {
-        if (!userId) { alert('💡 请先在上方登录后，才能发图片参与讨论哦！'); this.value = ''; return; }
+        if (!studentInfo.id) { alert('💡 请先在上方登录后，才能发图片参与讨论哦！'); this.value = ''; return; }
         if (this.files && this.files[0]) {
             const base64 = await getBase64(this.files[0]);
             pendingChatImageBase64 = base64;
@@ -3778,7 +3825,7 @@
 
     // 🚀 全新点赞逻辑：支持游客
     window.toggleLike = async function(msgId) {
-        const currentUId = userId || getGuestId(); // 没登录就用游客ID
+        const currentUId = studentInfo.id || getGuestId(); // 没登录就用游客ID
         await fetch('/api/v1/self-learning/forum/posts/' + msgId + '/like', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ studentId: currentUId }) });
         publicMessages = await fetchJson('/api/v1/self-learning/forum/posts') || [];
         renderMessages();
@@ -3786,23 +3833,23 @@
 
     // 🚀 核心新增：给好文打赏送积分
     window.tipMessage = async function(msgId, targetUserId) {
-        if (!userId) return showGeneralModal('提示', '💡 请先登录您的账号，才能给好文打赏积分哦！', 'warning');
-        if (userId === targetUserId) return showGeneralModal('提示', '😎 赞赏别人就好，不能给自己刷积分哦！', 'warning');
+        if (!studentInfo.id) return showGeneralModal('提示', '💡 请先登录您的账号，才能给好文打赏积分哦！', 'warning');
+        if (studentInfo.id === targetUserId) return showGeneralModal('提示', '😎 赞赏别人就好，不能给自己刷积分哦！', 'warning');
         if (!targetUserId || targetUserId.startsWith('guest')) return showGeneralModal('提示', '无法给无效用户打赏。', 'warning');
 
-        let amountStr = prompt('🎁 请输入您要送出的积分数量 (您当前有 ' + userPoints + ' 分)：', '10');
+        let amountStr = prompt('🎁 请输入您要送出的积分数量 (您当前有 ' + studentInfo.points + ' 分)：', '10');
         if (amountStr === null) return;
         let amount = parseInt(amountStr);
         if (isNaN(amount) || amount <= 0) return alert('⚠️ 请输入正确的数字！');
-        if (userPoints < amount) return alert('⚠️ 您的积分余额不足！');
+        if (studentInfo.points < amount) return alert('⚠️ 您的积分余额不足！');
 
         if (!confirm(`确定要消耗 ${amount} 积分打赏给对方吗？`)) return;
 
         try {
             // 扣除自己的积分
-            userPoints -= amount;
+            studentInfo.points -= amount;
             studentPointsData = await fetchJson("/api/v1/students/map") || {};
-            if(studentPointsData[userId]) studentPointsData[userId].points = userPoints;
+            if(studentPointsData[studentInfo.id]) studentPointsData[studentInfo.id].points = studentInfo.points;
             
             // 增加对方的积分
             if(!studentPointsData[targetUserId]) studentPointsData[targetUserId] = { points: 0, id: targetUserId, name: '神秘同学' };
@@ -3824,16 +3871,14 @@
     };
 
     async function loadMessages() {
-        if(userId) {
-          const [messages, resources] = await Promise.all([
-            fetchJson("/api/v1/self-learning/forum/posts"),
-            fetchJson("/api/v1/self-learning/materials")
-          ]);
-          publicMessages = messages || [];
-          publicMessages = publicMessages.map((msg) => ({ ...msg, module: normalizeForumModule(msg.module) }));
-          forumResources = (resources || []).map(normalizeForumResourceItem).filter((item) => item.file);
-          await refreshForumPaperNameOptions();
-        }
+        const [messages, resources] = await Promise.all([
+          fetchJson("/api/v1/self-learning/forum/posts"),
+          fetchJson("/api/v1/self-learning/materials")
+        ]);
+        publicMessages = messages || [];
+        publicMessages = publicMessages.map((msg) => ({ ...msg, module: normalizeForumModule(msg.module) }));
+        forumResources = (resources || []).map(normalizeForumResourceItem).filter((item) => item.file);
+        refreshForumPaperNameOptions();
         renderMessages();
     }
 
@@ -3851,7 +3896,7 @@
         const msgInput = document.getElementById('message-input');
         const currentMeta = getForumModuleMeta(currentForumModule);
         if (msgInput) {
-          if(!userId) {
+          if(!studentInfo.id) {
               msgInput.placeholder = `👉 请先在上方登录，登录后即可在「${currentMeta.label}」发帖互动、传图交流...`;
           } else {
               msgInput.placeholder = `在「${currentMeta.label}」发布内容... (按 Ctrl+Enter 发送)`;
@@ -3873,10 +3918,10 @@
         });
 
         let html = '';
-        const currentUId = userId || getGuestId();
+        const currentUId = studentInfo.id || getGuestId();
 
         sortedMessages.forEach(msg => {
-            const isMe = msg.senderId === userId;
+            const isMe = msg.senderId === studentInfo.id;
             let displayName = msg.isAnonymous ? "匿名侠" : msg.senderName;
             let avatarSeed = msg.isAnonymous ? msg.id : msg.senderId;
             const avatarUrl = `https://api.dicebear.com/7.x/adventurer/svg?seed=${avatarSeed}&backgroundColor=b6e3f4`;
@@ -3918,7 +3963,7 @@
 
     async function sendMessage() {
         if (currentForumModule === 'resources') return;
-        if (!userId) return showGeneralModal('提示', '💡 请先在上方填写姓名和学号登录，登录后才能发帖讨论哦！', 'warning');
+        if (!studentInfo.id) return showGeneralModal('提示', '💡 请先在上方填写姓名和学号登录，登录后才能发帖讨论哦！', 'warning');
         
         const input = document.getElementById('message-input');
         const paperInput = document.getElementById('need-video-paper-input');
@@ -3932,7 +3977,7 @@
         if (isNeedVideo) {
           if (!paperName) return showGeneralModal('提示', '请先输入要讲解的套题名称。', 'warning');
           if (!questionNo) return showGeneralModal('提示', '请先输入具体题号。', 'warning');
-          const visiblePapers = await getVisiblePapers() || [];
+          const visiblePapers = getVisiblePapers() || [];
           const paperExists = visiblePapers.some((paper) => String(paper.name || '').trim() === paperName);
           if (!paperExists) return showGeneralModal('提示', `未找到名为“${paperName}”的套题，请重新确认后再发布。`, 'warning');
         } else if (!text && !pendingChatImageBase64) {
@@ -3951,7 +3996,7 @@
             }
 
 	            const newMsg = {
-	                id: Date.now(), senderId: userId, senderName: userName,
+	                id: Date.now(), senderId: studentInfo.id, senderName: studentInfo.name,
 	                isAnonymous: isAnon,
                   text: isNeedVideo ? `《${paperName}》第${questionNo}题需要讲解视频` : text,
                   image: imgUrl,
