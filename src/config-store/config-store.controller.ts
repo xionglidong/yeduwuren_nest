@@ -7,7 +7,12 @@ export class ConfigStoreController {
 
   @Get(':key')
   async get(@Param('key') key: string): Promise<unknown> {
-    return this.configStoreService.get(key);
+    const value = await this.configStoreService.get(key);
+    if (key === 'currentSchoolYear' && typeof value === 'string' && value) {
+      // 获取学年后同步更新每个学生的 cohort、grade、lastUpdate
+      await this.configStoreService.syncStudentGradesForSchoolYear(value);
+    }
+    return value;
   }
 
   @Put(':key')

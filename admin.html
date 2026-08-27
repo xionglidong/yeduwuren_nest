@@ -854,7 +854,7 @@
       }).join('');
     }
     async function editAnswerTag(answerIndex, paperId, targetStudentId = null) {
-      const allAnswers = (await fetch(`/api/v1/papers/submissions/records`).then(r => r.json())) || [];
+      const allAnswers = g_records;
       const record = allAnswers[answerIndex];
       if (!record) return alert('未找到对应作答记录');
       const currentTags = getAnswerTags(record);
@@ -876,7 +876,7 @@
       await loadDailyRecords();
     }
     async function removeAnswerTag(answerIndex, tagValue, paperId, targetStudentId = null) {
-      const allAnswers = (await fetch(`/api/v1/papers/submissions/records`).then(r => r.json())) || [];
+      const allAnswers = g_records;
       const record = allAnswers[answerIndex];
       if (!record) return alert('未找到对应作答记录');
       const nextTags = getAnswerTags(record).filter((tag) => tag !== tagValue);
@@ -962,13 +962,28 @@
     const ADMIN_FORUM_PAGE_SIZE = 5;
     const FORUM_RESOURCE_PAGE_SIZE = 5;
     let forumModulePageState = {};
-
-    async function init() { if (localStorage.getItem(ADMIN_SESSION_KEY) === 'true') { showMainContent(); } else { loginBtn.addEventListener('click', handleLogin); [adminName, adminPassword].forEach(el => { el.addEventListener('keyup', e => e.key === 'Enter' && handleLogin()); }); } }
+    let g_categories = [];
+    let g_papers = [];
+    let g_records = [];
+    let g_map = {};
+    let g_formula = {}
+    async function init() {
+       if (localStorage.getItem(ADMIN_SESSION_KEY) === 'true') { 
+        showMainContent(); 
+       } else {
+        loginBtn.addEventListener('click', handleLogin);
+        [adminName, adminPassword].forEach(el => { el.addEventListener('keyup', e => e.key === 'Enter' && handleLogin()); });
+      } 
+    }
     async function handleLogin() { const name = adminName.value.trim(), password = adminPassword.value.trim(); loginError.classList.add('hidden'); if (!name || !password) return showLoginError('请输入完整的用户名和密码'); if (name === ADMIN_CREDENTIALS.username && password === ADMIN_CREDENTIALS.password) { localStorage.setItem(ADMIN_SESSION_KEY, 'true'); showMainContent(); } else { showLoginError('用户名或密码错误，请重试'); adminPassword.value = ''; } }
     function showLoginError(message) { loginError.textContent = message; loginError.classList.remove('hidden'); loginScreen.querySelector('.login-container').classList.add('shake'); setTimeout(() => loginScreen.querySelector('.login-container').classList.remove('shake'), 500); }
-    function showMainContent() { loginScreen.classList.add('hidden'); mainContent.classList.remove('hidden'); initSystem(); }
+    function showMainContent() { 
+      loginScreen.classList.add('hidden'); 
+      mainContent.classList.remove('hidden'); 
+      initSystem();
+    }
     async function handleLogout() { if (confirm('确定要退出登录吗？')) { localStorage.removeItem(ADMIN_SESSION_KEY); window.location.reload(); } }
-    let g_categories = [];
+    
     function isArchivedPaper(paper, categories = null) {
       if (!paper) return false;
       if (paper.isArchived) return true;
@@ -1001,225 +1016,252 @@
     
     function initSystem() {
       //initStorageData(); 
-      generateAnswerSelects(); 
-      renderAllPaperLists();
-      initSelfLearningManagement();
+     Promise.all([
+        fetch(`/api/v1/papers`).then(r => r.json()).then(res => res || []),
+        fetch(`/api/v1/papers/submissions/records`).then(r => r.json()).then(res => res || []),
+        fetch(`/api/v1/papers/categories/list`).then(r => r.json()).then(res => res || []),
+        fetch(`/api/v1/students/map`).then(r => r.json()).then(res => res || {}),
+        fetch(`/api/v1/config/learningPowerFormula`).then(r => r.json()).then(res => res || {
+          cPoints: 500,
+          cAccuracy: 2,
+          cDuration: 10,
+          cQuestions: 200
+        }),
+      ]).then(res => {
+        g_papers = res[0]
+        g_records = res[1]
+        g_categories = res[2]
+        g_map = res[3]
+        g_formula = res[4]
+
+        generateAnswerSelects();
       
-      generateFbPointsConfig(); 
-      paperQuestionCount.addEventListener('input', generateAnswerSelects); 
-      paperFillBlankCount.addEventListener('input', generateFbPointsConfig); 
-      if (paperType) paperType.addEventListener('change', syncPaperFormByType);
-      syncPaperFormByType();
+        renderAllPaperLists();
+        
+        initSelfLearningManagement();
+        
+        generateFbPointsConfig();
 
-      // Grade filter tabs selection logic (Left Panel)
-      if (leftGradeFilterContainer) {
-        leftGradeFilterContainer.addEventListener('click', (e) => {
-          const btn = e.target.closest('.grade-filter-tab');
-          if (!btn) return;
-          currentLeftGradeFilter = btn.dataset.grade;
-          // Toggle active classes
-          leftGradeFilterContainer.querySelectorAll('.grade-filter-tab').forEach(el => {
-            el.className = 'grade-filter-tab px-3 py-1.5 text-xs font-semibold rounded-lg transition-all text-gray-600 hover:text-purple-600';
+        paperQuestionCount.addEventListener('input', generateAnswerSelects); 
+        paperFillBlankCount.addEventListener('input', generateFbPointsConfig); 
+        if (paperType) paperType.addEventListener('change', syncPaperFormByType);
+        syncPaperFormByType();
+        // Grade filter tabs selection logic (Left Panel)
+        if (leftGradeFilterContainer) {
+          leftGradeFilterContainer.addEventListener('click', (e) => {
+            const btn = e.target.closest('.grade-filter-tab');
+            if (!btn) return;
+            currentLeftGradeFilter = btn.dataset.grade;
+            // Toggle active classes
+            leftGradeFilterContainer.querySelectorAll('.grade-filter-tab').forEach(el => {
+              el.className = 'grade-filter-tab px-3 py-1.5 text-xs font-semibold rounded-lg transition-all text-gray-600 hover:text-purple-600';
+            });
+            btn.className = 'grade-filter-tab px-3 py-1.5 text-xs font-semibold rounded-lg transition-all bg-white text-purple-600 shadow-sm';
+            renderAllPaperLists();
           });
-          btn.className = 'grade-filter-tab px-3 py-1.5 text-xs font-semibold rounded-lg transition-all bg-white text-purple-600 shadow-sm';
-          renderAllPaperLists();
-        });
-      }
+        }
 
-      // Search field input listener (Left Panel)
-      if (leftSearchInput) {
-        leftSearchInput.addEventListener('input', (e) => {
-          currentLeftSearchQuery = e.target.value.trim().toLowerCase();
-          renderAllPaperLists();
-        });
-      }
+        // Search field input listener (Left Panel)
+        if (leftSearchInput) {
+          leftSearchInput.addEventListener('input', (e) => {
+            currentLeftSearchQuery = e.target.value.trim().toLowerCase();
+            renderAllPaperLists();
+          });
+        }
 
-      // Show uncategorized only checkbox change listener (Left Panel)
-      if (showUncategorizedOnlyCheckbox) {
-        showUncategorizedOnlyCheckbox.addEventListener('change', (e) => {
-          currentShowUncategorizedOnly = e.target.checked;
-          renderAllPaperLists();
-        });
-      }
+        // Show uncategorized only checkbox change listener (Left Panel)
+        if (showUncategorizedOnlyCheckbox) {
+          showUncategorizedOnlyCheckbox.addEventListener('change', (e) => {
+            currentShowUncategorizedOnly = e.target.checked;
+            renderAllPaperLists();
+          });
+        }
 
-      addPaperBtn.addEventListener('click', addNewPaper);
-      document.querySelectorAll('input[name="paperScope"]').forEach(radio => {
-          radio.addEventListener('change', (e) => {
-              if (e.target.value === 'partial') {
-                  document.getElementById('partialStudentsContainer').classList.remove('hidden');
+        addPaperBtn.addEventListener('click', addNewPaper);
+        document.querySelectorAll('input[name="paperScope"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                if (e.target.value === 'partial') {
+                    document.getElementById('partialStudentsContainer').classList.remove('hidden');
+                    renderPaperTargetStudentsList();
+                } else {
+                    document.getElementById('partialStudentsContainer').classList.add('hidden');
+                }
+            });
+        });
+        document.getElementById('clearSelectedStudentsBtn').addEventListener('click', () => {
+            paperTargetStudentIds = [];
+            renderPaperTargetStudentsList();
+        });
+
+        const studentsGradeFilter = document.getElementById('studentsGradeFilter');
+        if (studentsGradeFilter) {
+            studentsGradeFilter.addEventListener('change', (e) => {
+                paperTargetStudentGradeFilter = e.target.value || 'all';
+                paperTargetStudentPage = 1;
+                renderPaperTargetStudentsList();
+            });
+        }
+          const studentsSearchInput = document.getElementById('studentsSearchInput');
+          const clearStudentsSearchBtn = document.getElementById('clearStudentsSearchBtn');
+          if (studentsSearchInput) {
+              studentsSearchInput.addEventListener('input', (e) => {
+                  paperTargetStudentKeyword = e.target.value || '';
+                  paperTargetStudentPage = 1;
+                  if (clearStudentsSearchBtn) clearStudentsSearchBtn.classList.toggle('hidden', !paperTargetStudentKeyword.trim());
                   renderPaperTargetStudentsList();
-              } else {
-                  document.getElementById('partialStudentsContainer').classList.add('hidden');
-              }
-          });
-      });
-      document.getElementById('clearSelectedStudentsBtn').addEventListener('click', () => {
-          paperTargetStudentIds = [];
-          renderPaperTargetStudentsList();
-      });
-      const studentsGradeFilter = document.getElementById('studentsGradeFilter');
-      if (studentsGradeFilter) {
-          studentsGradeFilter.addEventListener('change', (e) => {
-              paperTargetStudentGradeFilter = e.target.value || 'all';
-              paperTargetStudentPage = 1;
-              renderPaperTargetStudentsList();
-          });
-      }
-      const studentsSearchInput = document.getElementById('studentsSearchInput');
-      const clearStudentsSearchBtn = document.getElementById('clearStudentsSearchBtn');
-      if (studentsSearchInput) {
-          studentsSearchInput.addEventListener('input', (e) => {
-              paperTargetStudentKeyword = e.target.value || '';
-              paperTargetStudentPage = 1;
-              if (clearStudentsSearchBtn) clearStudentsSearchBtn.classList.toggle('hidden', !paperTargetStudentKeyword.trim());
-              renderPaperTargetStudentsList();
-          });
-      }
-      if (clearStudentsSearchBtn && studentsSearchInput) {
-          clearStudentsSearchBtn.addEventListener('click', () => {
-              paperTargetStudentKeyword = '';
-              paperTargetStudentPage = 1;
-              studentsSearchInput.value = '';
-              clearStudentsSearchBtn.classList.add('hidden');
-              renderPaperTargetStudentsList();
-              studentsSearchInput.focus();
-          });
-      }
-      document.querySelectorAll('input[name="paperScopeEditMode"]').forEach((radio) => {
-          radio.addEventListener('change', async (e) => {
-              const partialContainer = document.getElementById('paperScopeEditPartialContainer');
-              if (e.target.value === 'partial') {
-                  if (partialContainer) partialContainer.classList.remove('hidden');
-                  await renderPaperScopeEditStudentsList();
-              } else if (partialContainer) {
-                  partialContainer.classList.add('hidden');
-              }
-          });
-      });
-      const scopeEditGradeFilter = document.getElementById('scopeEditGradeFilter');
-      if (scopeEditGradeFilter) {
-          scopeEditGradeFilter.addEventListener('change', () => {
-              paperScopeEditGradeFilter = scopeEditGradeFilter.value || 'all';
-              paperScopeEditPage = 1;
-              renderPaperScopeEditStudentsList();
-          });
-      }
-      const scopeEditSearchInput = document.getElementById('scopeEditSearchInput');
-      const clearScopeEditSearchBtn = document.getElementById('clearScopeEditSearchBtn');
-      if (scopeEditSearchInput) {
-          scopeEditSearchInput.addEventListener('input', () => {
-              paperScopeEditKeyword = scopeEditSearchInput.value || '';
-              paperScopeEditPage = 1;
-              if (clearScopeEditSearchBtn) clearScopeEditSearchBtn.classList.toggle('hidden', !paperScopeEditKeyword.trim());
-              renderPaperScopeEditStudentsList();
-          });
-      }
-      if (clearScopeEditSearchBtn && scopeEditSearchInput) {
-          clearScopeEditSearchBtn.addEventListener('click', () => {
-              paperScopeEditKeyword = '';
-              paperScopeEditPage = 1;
-              scopeEditSearchInput.value = '';
-              clearScopeEditSearchBtn.classList.add('hidden');
-              renderPaperScopeEditStudentsList();
-              scopeEditSearchInput.focus();
-          });
-      }
-      const clearScopeEditStudentsBtn = document.getElementById('clearScopeEditStudentsBtn');
-      if (clearScopeEditStudentsBtn) {
-          clearScopeEditStudentsBtn.addEventListener('click', () => {
-              paperScopeEditStudentIds = [];
-              renderPaperScopeEditStudentsList();
-          });
-      }
-      const closePaperScopeEditModalBtn = document.getElementById('closePaperScopeEditModalBtn');
-      const cancelPaperScopeEditBtn = document.getElementById('cancelPaperScopeEditBtn');
-      const savePaperScopeEditBtn = document.getElementById('savePaperScopeEditBtn');
-      const paperScopeEditModal = document.getElementById('paperScopeEditModal');
-      if (closePaperScopeEditModalBtn) closePaperScopeEditModalBtn.addEventListener('click', closePaperScopeEditModal);
-      if (cancelPaperScopeEditBtn) cancelPaperScopeEditBtn.addEventListener('click', closePaperScopeEditModal);
-      if (savePaperScopeEditBtn) savePaperScopeEditBtn.addEventListener('click', savePaperScopeEdit);
-      if (paperScopeEditModal) paperScopeEditModal.addEventListener('click', (e) => { if (e.target === paperScopeEditModal) closePaperScopeEditModal(); });
-      closeDetailModalBtn.addEventListener('click', closeDetailModal);
-      answerDetailModal.addEventListener('click', e => e.target === answerDetailModal && closeDetailModal()); 
-      if (closeSelfLearningInteractionModalBtn) closeSelfLearningInteractionModalBtn.addEventListener('click', closeSelfLearningInteractionModal);
-      if (selfLearningInteractionModal) selfLearningInteractionModal.addEventListener('click', (e) => { if (e.target === selfLearningInteractionModal) closeSelfLearningInteractionModal(); });
-      if (closeVideoAnalyticsModalBtn) closeVideoAnalyticsModalBtn.addEventListener('click', closeVideoAnalyticsModal);
-      if (videoAnalyticsModal) videoAnalyticsModal.addEventListener('click', (e) => { if (e.target === videoAnalyticsModal) closeVideoAnalyticsModal(); });
-      if (closeVideoSelectModalBtn) closeVideoSelectModalBtn.addEventListener('click', closeVideoSelectModal);
-      if (videoSelectModal) videoSelectModal.addEventListener('click', (e) => { if (e.target === videoSelectModal) closeVideoSelectModal(); });
-      if (closePdfSelectModalBtn) closePdfSelectModalBtn.addEventListener('click', closePdfSelectModal);
-      if (pdfSelectModal) pdfSelectModal.addEventListener('click', (e) => { if (e.target === pdfSelectModal) closePdfSelectModal(); });
-      logoutBtn.addEventListener('click', handleLogout);
-      tabButtons.forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
-      initPrizeManagement(); 
-      fetch(`/api/v1/config/learningPowerFormula`).then(r => r.json()).then(async (formula) => {
-        const activeFormula = formula || { cPoints: 500, cAccuracy: 2, cDuration: 10, cQuestions: 200 };
-        await recalculateAllStudentsLearningPower(activeFormula);
+              });
+        }
+
+          if (clearStudentsSearchBtn && studentsSearchInput) {
+            clearStudentsSearchBtn.addEventListener('click', () => {
+                paperTargetStudentKeyword = '';
+                paperTargetStudentPage = 1;
+                studentsSearchInput.value = '';
+                clearStudentsSearchBtn.classList.add('hidden');
+                renderPaperTargetStudentsList();
+                studentsSearchInput.focus();
+            });
+        }
+
+        document.querySelectorAll('input[name="paperScopeEditMode"]').forEach((radio) => {
+            radio.addEventListener('change', async (e) => {
+                const partialContainer = document.getElementById('paperScopeEditPartialContainer');
+                if (e.target.value === 'partial') {
+                    if (partialContainer) partialContainer.classList.remove('hidden');
+                    await renderPaperScopeEditStudentsList();
+                } else if (partialContainer) {
+                    partialContainer.classList.add('hidden');
+                }
+            });
+        });
+
+        const scopeEditGradeFilter = document.getElementById('scopeEditGradeFilter');
+        if (scopeEditGradeFilter) {
+            scopeEditGradeFilter.addEventListener('change', () => {
+                paperScopeEditGradeFilter = scopeEditGradeFilter.value || 'all';
+                paperScopeEditPage = 1;
+                renderPaperScopeEditStudentsList();
+            });
+        }
+
+        const scopeEditSearchInput = document.getElementById('scopeEditSearchInput');
+        const clearScopeEditSearchBtn = document.getElementById('clearScopeEditSearchBtn');
+        if (scopeEditSearchInput) {
+            scopeEditSearchInput.addEventListener('input', () => {
+                paperScopeEditKeyword = scopeEditSearchInput.value || '';
+                paperScopeEditPage = 1;
+                if (clearScopeEditSearchBtn) clearScopeEditSearchBtn.classList.toggle('hidden', !paperScopeEditKeyword.trim());
+                renderPaperScopeEditStudentsList();
+            });
+        }
+
+        if (clearScopeEditSearchBtn && scopeEditSearchInput) {
+            clearScopeEditSearchBtn.addEventListener('click', () => {
+                paperScopeEditKeyword = '';
+                paperScopeEditPage = 1;
+                scopeEditSearchInput.value = '';
+                clearScopeEditSearchBtn.classList.add('hidden');
+                renderPaperScopeEditStudentsList();
+                scopeEditSearchInput.focus();
+            });
+        }
+
+        const clearScopeEditStudentsBtn = document.getElementById('clearScopeEditStudentsBtn');
+        if (clearScopeEditStudentsBtn) {
+            clearScopeEditStudentsBtn.addEventListener('click', () => {
+                paperScopeEditStudentIds = [];
+                renderPaperScopeEditStudentsList();
+            });
+        }
+
+        const closePaperScopeEditModalBtn = document.getElementById('closePaperScopeEditModalBtn');
+        const cancelPaperScopeEditBtn = document.getElementById('cancelPaperScopeEditBtn');
+        const savePaperScopeEditBtn = document.getElementById('savePaperScopeEditBtn');
+        const paperScopeEditModal = document.getElementById('paperScopeEditModal');
+        if (closePaperScopeEditModalBtn) closePaperScopeEditModalBtn.addEventListener('click', closePaperScopeEditModal);
+        if (cancelPaperScopeEditBtn) cancelPaperScopeEditBtn.addEventListener('click', closePaperScopeEditModal);
+        if (savePaperScopeEditBtn) savePaperScopeEditBtn.addEventListener('click', savePaperScopeEdit);
+        if (paperScopeEditModal) paperScopeEditModal.addEventListener('click', (e) => { if (e.target === paperScopeEditModal) closePaperScopeEditModal(); });
+        closeDetailModalBtn.addEventListener('click', closeDetailModal);
+        answerDetailModal.addEventListener('click', e => e.target === answerDetailModal && closeDetailModal()); 
+        if (closeSelfLearningInteractionModalBtn) closeSelfLearningInteractionModalBtn.addEventListener('click', closeSelfLearningInteractionModal);
+        if (selfLearningInteractionModal) selfLearningInteractionModal.addEventListener('click', (e) => { if (e.target === selfLearningInteractionModal) closeSelfLearningInteractionModal(); });
+        if (closeVideoAnalyticsModalBtn) closeVideoAnalyticsModalBtn.addEventListener('click', closeVideoAnalyticsModal);
+        if (videoAnalyticsModal) videoAnalyticsModal.addEventListener('click', (e) => { if (e.target === videoAnalyticsModal) closeVideoAnalyticsModal(); });
+        if (closeVideoSelectModalBtn) closeVideoSelectModalBtn.addEventListener('click', closeVideoSelectModal);
+        if (videoSelectModal) videoSelectModal.addEventListener('click', (e) => { if (e.target === videoSelectModal) closeVideoSelectModal(); });
+        if (closePdfSelectModalBtn) closePdfSelectModalBtn.addEventListener('click', closePdfSelectModal);
+        if (pdfSelectModal) pdfSelectModal.addEventListener('click', (e) => { if (e.target === pdfSelectModal) closePdfSelectModal(); });
+        logoutBtn.addEventListener('click', handleLogout);
+        tabButtons.forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
+        initPrizeManagement(); 
+
+        recalculateAllStudentsLearningPower(g_formula);
+        
         initStudentManagement(); 
         initGlobalSchoolYear(); 
         initRankingManagement();
-      }).catch(() => {
-        initStudentManagement(); 
-        initGlobalSchoolYear(); 
-        initRankingManagement();
-      });
-      exportAllDataBtn.addEventListener('click', exportAllData); 
-      selectImportFileBtn.addEventListener('click', () => importFileInput.click()); 
-      importFileInput.addEventListener('change', importAllData);
-      initDailyRecords();
-      if (clearFillBlankAnswersBtn) {
-        clearFillBlankAnswersBtn.addEventListener('click', () => {
-          adminFillBlankAnswerFiles = [];
-          if (paperFillBlankAnswerImage) paperFillBlankAnswerImage.value = '';
-          const grid = document.getElementById('adminPreviewGrid');
-          if (grid) grid.innerHTML = '';
-        });
-      }
-      if (paperPdfSelectBtn) {
-        paperPdfSelectBtn.addEventListener('click', () => openPdfSelectModal('paperPdfFile', 'filename'));
-      }
-      if (videoUploadBtn && videoUploadInput) {
-        videoUploadBtn.addEventListener('click', () => videoUploadInput.click());
-        videoUploadInput.addEventListener('change', async function () {
-          if (!this.files || this.files.length === 0) return;
-          for (let i = 0; i < this.files.length; i++) {
-            await uploadVideoFile(this.files[i]);
-          }
-          this.value = '';
-          await fetchVideoLibrary();
-        });
-      }
-      if (pdfUploadBtn && pdfUploadInput) {
-        pdfUploadBtn.addEventListener('click', () => pdfUploadInput.click());
-        pdfUploadInput.addEventListener('change', async function () {
-          if (!this.files || this.files.length === 0) return;
-          for (let i = 0; i < this.files.length; i++) {
-            await uploadPdfFile(this.files[i]);
-          }
-          this.value = '';
-          await fetchPdfLibrary();
-        });
-      }
-      if (videoManagerSearch) videoManagerSearch.addEventListener('input', () => { videoManagerPage = 1; renderVideoManagerList(); });
-      if (refreshVideoListBtn) refreshVideoListBtn.addEventListener('click', fetchVideoLibrary);
-      if (videoSelectSearch) videoSelectSearch.addEventListener('input', () => { videoSelectState.page = 1; renderVideoSelectList(); });
-      if (videoSelectRefreshBtn) videoSelectRefreshBtn.addEventListener('click', fetchVideoLibrary);
-      if (pdfManagerSearch) pdfManagerSearch.addEventListener('input', () => { pdfManagerPage = 1; renderPdfManagerList(); });
-      if (refreshPdfListBtn) refreshPdfListBtn.addEventListener('click', fetchPdfLibrary);
-      if (pdfSelectSearch) pdfSelectSearch.addEventListener('input', () => { pdfSelectState.page = 1; renderPdfSelectList(); });
-      if (pdfSelectRefreshBtn) pdfSelectRefreshBtn.addEventListener('click', fetchPdfLibrary);
-      if (forumResourcePdfSelectBtn) forumResourcePdfSelectBtn.addEventListener('click', () => openPdfSelectModal('forumResourcePdfFile', 'filename'));
-      if (addForumResourceBtn) addForumResourceBtn.addEventListener('click', addForumResourceItem);
-      if (archivedGradeFilter) archivedGradeFilter.addEventListener('change', () => { window.archivedIndivPage = 1; renderArchivedPaperList(); });
-      if (archivedTypeFilter) archivedTypeFilter.addEventListener('change', () => { window.archivedIndivPage = 1; renderArchivedPaperList(); });
-      const archivedListEl = document.getElementById('archivedIndividualPapersList');
-      if (archivedListEl) {
-        archivedListEl.addEventListener('dragover', handleArchivedIndividualPapersDragOver);
-        archivedListEl.addEventListener('dragleave', handleArchivedIndividualPapersDragLeave);
-        archivedListEl.addEventListener('drop', handleArchivedIndividualPapersDrop);
-      }
-      fetchVideoLibrary();
-      fetchPdfLibrary();
+        
+        exportAllDataBtn.addEventListener('click', exportAllData); 
+        selectImportFileBtn.addEventListener('click', () => importFileInput.click()); 
+        importFileInput.addEventListener('change', importAllData);
+
+        if (clearFillBlankAnswersBtn) {
+          clearFillBlankAnswersBtn.addEventListener('click', () => {
+            adminFillBlankAnswerFiles = [];
+            if (paperFillBlankAnswerImage) paperFillBlankAnswerImage.value = '';
+            const grid = document.getElementById('adminPreviewGrid');
+            if (grid) grid.innerHTML = '';
+          });
+        }
+        if (paperPdfSelectBtn) {
+          paperPdfSelectBtn.addEventListener('click', () => openPdfSelectModal('paperPdfFile', 'filename'));
+        }
+        if (videoUploadBtn && videoUploadInput) {
+          videoUploadBtn.addEventListener('click', () => videoUploadInput.click());
+          videoUploadInput.addEventListener('change', async function () {
+            if (!this.files || this.files.length === 0) return;
+            for (let i = 0; i < this.files.length; i++) {
+              await uploadVideoFile(this.files[i]);
+            }
+            this.value = '';
+            await fetchVideoLibrary();
+          });
+        }
+
+        if (pdfUploadBtn && pdfUploadInput) {
+          pdfUploadBtn.addEventListener('click', () => pdfUploadInput.click());
+          pdfUploadInput.addEventListener('change', async function () {
+            if (!this.files || this.files.length === 0) return;
+            for (let i = 0; i < this.files.length; i++) {
+              await uploadPdfFile(this.files[i]);
+            }
+            this.value = '';
+            await fetchPdfLibrary();
+          });
+        }
+
+        if (videoManagerSearch) videoManagerSearch.addEventListener('input', () => { videoManagerPage = 1; renderVideoManagerList(); });
+        if (refreshVideoListBtn) refreshVideoListBtn.addEventListener('click', fetchVideoLibrary);
+        if (videoSelectSearch) videoSelectSearch.addEventListener('input', () => { videoSelectState.page = 1; renderVideoSelectList(); });
+        if (videoSelectRefreshBtn) videoSelectRefreshBtn.addEventListener('click', fetchVideoLibrary);
+        if (pdfManagerSearch) pdfManagerSearch.addEventListener('input', () => { pdfManagerPage = 1; renderPdfManagerList(); });
+        if (refreshPdfListBtn) refreshPdfListBtn.addEventListener('click', fetchPdfLibrary);
+        if (pdfSelectSearch) pdfSelectSearch.addEventListener('input', () => { pdfSelectState.page = 1; renderPdfSelectList(); });
+        if (pdfSelectRefreshBtn) pdfSelectRefreshBtn.addEventListener('click', fetchPdfLibrary);
+        if (forumResourcePdfSelectBtn) forumResourcePdfSelectBtn.addEventListener('click', () => openPdfSelectModal('forumResourcePdfFile', 'filename'));
+        if (addForumResourceBtn) addForumResourceBtn.addEventListener('click', addForumResourceItem);
+        if (archivedGradeFilter) archivedGradeFilter.addEventListener('change', () => { window.archivedIndivPage = 1; renderArchivedPaperList(); });
+        if (archivedTypeFilter) archivedTypeFilter.addEventListener('change', () => { window.archivedIndivPage = 1; renderArchivedPaperList(); });
+        const archivedListEl = document.getElementById('archivedIndividualPapersList');
+        if (archivedListEl) {
+          archivedListEl.addEventListener('dragover', handleArchivedIndividualPapersDragOver);
+          archivedListEl.addEventListener('dragleave', handleArchivedIndividualPapersDragLeave);
+          archivedListEl.addEventListener('drop', handleArchivedIndividualPapersDrop);
+        }
+        fetchVideoLibrary();
+        fetchPdfLibrary();
+      })
     }
 
     function handleAdminPreview(input) {
@@ -1468,8 +1510,8 @@
       const selectedDate = correctionDateFilter.value;
       if (!selectedDate) return;
 
-      const allAnswers = (await fetch(`/api/v1/papers/submissions/records`).then(r => r.json())) || [];
-      const papers = (await fetch(`/api/v1/papers`).then(r => r.json())) || [];
+      const allAnswers = g_records;
+      const papers = g_papers;
 
       // 筛选在选择日期提交了改错照片 (correctionImages) 的记录
       const filteredRecords = allAnswers.filter(record => {
@@ -1545,7 +1587,12 @@
         });
       });
     }
-    async function loadDailyRecords() { const selectedDate = recordDateFilter.value; if (!selectedDate) return; const allAnswers = (await fetch(`/api/v1/papers/submissions/records`).then(r => r.json())) || [], papers = (await fetch(`/api/v1/papers`).then(r => r.json())) || []; const filteredRecords = allAnswers.filter(record => {
+    async function loadDailyRecords() { 
+      const selectedDate = recordDateFilter.value; 
+      if (!selectedDate) return;
+      const allAnswers = g_records, 
+      papers = g_papers; 
+      const filteredRecords = allAnswers.filter(record => {
         if (!record.submitTime) return false;
         try {
             // 暴力正则提取年月日，无视斜杠、横杠、中文等格式差异
@@ -1675,12 +1722,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
       return '🌱 学徒';
     }
     async function openAnswerRecordReport(answerIndex, paperId) {
-      const [allAnswers, papers, studentPointsMap, timerRecords] = await Promise.all([
-        fetch(`/api/v1/papers/submissions/records`).then(r => r.json()).then((res) => res || []),
-        fetch(`/api/v1/papers`).then(r => r.json()).then((res) => res || []),
-        fetch(`/api/v1/students/map`).then(r => r.json()).then((res) => res || {}),
-        fetch(`/api/v1/timer/records`).then(r => r.json()).then((res) => res || {})
-      ]);
+      const [allAnswers, papers, studentPointsMap, timerRecords] = [g_records,g_papers,g_map,g_records]
       const record = allAnswers[answerIndex];
       const paper = papers.find((item) => item.id === paperId);
       if (!record || !paper) return alert('未找到用于导出的作答记录');
@@ -1913,7 +1955,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
     }
 
     async function renderPaperTargetStudentsList() {
-      const studentPoints = (await fetch(`/api/v1/students/map`).then(r => r.json())) || {};
+      const studentPoints = g_map;
       let studentsArray = Object.values(studentPoints).filter(s => !s.isArchived);
       const listContainer = document.getElementById('studentsListGrid');
       const paginationContainer = document.getElementById('studentsListPagination');
@@ -2058,7 +2100,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
     }
 
     async function renderPaperScopeEditStudentsList() {
-      const studentPoints = (await fetch(`/api/v1/students/map`).then(r => r.json())) || {};
+      const studentPoints = g_map;
       let studentsArray = Object.values(studentPoints).filter((s) => !s.isArchived);
       const listContainer = document.getElementById('scopeEditStudentsGrid');
       const paginationContainer = document.getElementById('scopeEditPagination');
@@ -2179,7 +2221,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
     }
 
     async function openPaperScopeEditModal(paperId) {
-      const papers = (await fetch(`/api/v1/papers`).then(r => r.json())) || [];
+      const papers = g_papers;
       const paper = papers.find((item) => item.id === paperId);
       if (!paper) return alert('未找到该套题');
       currentPaperScopeEditId = paperId;
@@ -2222,7 +2264,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
       if (mode === 'partial' && paperScopeEditStudentIds.length === 0) {
         if (!confirm('您选择了“部分学生”但未选中任何学生，这套卷子将对所有人不可见。确定继续吗？')) return;
       }
-      let papers = (await fetch(`/api/v1/papers`).then(r => r.json())) || [];
+      let papers = g_papers;
       const idx = papers.findIndex((item) => item.id === currentPaperScopeEditId);
       if (idx === -1) return alert('未找到该套题');
       const targetStudentIds = mode === 'all' ? [] : [...paperScopeEditStudentIds];
@@ -2347,21 +2389,21 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
       if (typeof generateFbPointsConfig === 'function') generateFbPointsConfig(); 
       syncPaperFormByType();
       if (paperAllowRedo) paperAllowRedo.checked = false;
-      
       alert('任务添加成功！');
     }
 
     async function renderAllPaperLists() {
-        const papers = (await fetch(`/api/v1/papers`).then(r => r.json())) || [];
-        const allAnswers = (await fetch(`/api/v1/papers/submissions/records`).then(r => r.json())) || [];
+        g_papers = (await fetch(`/api/v1/papers`).then(r => r.json())) || [];
+        g_records = (await fetch(`/api/v1/papers/submissions/records`).then(r => r.json())) || [];
         g_categories = (await fetch(`/api/v1/papers/categories/list`).then(r => r.json())) || [];
-        
         // 1. Render refactored dual-pane UI
-        await renderRefactoredPaperList(papers, allAnswers);
+        await renderRefactoredPaperList(g_papers, g_records);
         
         // 2. Render archived lists & self learning options
-        await renderArchivedPaperList(papers, allAnswers);
+        await renderArchivedPaperList(g_papers, g_records);
+        
         await refreshSelfLearningPaperOptions();
+        initDailyRecords();
     }
 
     // Refactored question library UI helpers
@@ -2479,7 +2521,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
       const draggedCatId = e.dataTransfer.getData('text/category-id');
       if (draggedCatId) {
         if (draggedCatId === categoryId || !categoryId) return;
-        let categories = (await fetch(`/api/v1/papers/categories/list`).then(r => r.json())) || [];
+        let categories = g_categories;
         const draggedIdx = categories.findIndex(c => c.id === draggedCatId);
         const targetIdx = categories.findIndex(c => c.id === categoryId);
         if (draggedIdx === -1 || targetIdx === -1) return;
@@ -2495,7 +2537,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
       const paperId = e.dataTransfer.getData('text/plain');
       if (!paperId || !categoryId) return;
       
-      let papers = (await fetch(`/api/v1/papers`).then(r => r.json())) || [];
+      let papers = g_papers;
       const idx = papers.findIndex(p => p.id === paperId);
       if (idx === -1) return;
       
@@ -2559,12 +2601,12 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
       if (draggedPaperId && catId && targetPaperId && catId === targetCatId) {
         if (draggedPaperId === targetPaperId) return;
         
-        let categories = (await fetch(`/api/v1/papers/categories/list`).then(r => r.json())) || [];
+        let categories = g_categories;
         const catIdx = categories.findIndex(c => c.id === catId);
         if (catIdx === -1) return;
         
         let paperIds = Array.isArray(categories[catIdx].paperIds) ? [...categories[catIdx].paperIds] : [];
-        const papers = (await fetch(`/api/v1/papers`).then(r => r.json())) || [];
+        const papers = g_papers;
         const activePapers = papers.filter(p => !isArchivedPaper(p));
         const catPapers = activePapers.filter(p => getPaperCategoryIds(p).includes(catId));
         
@@ -2590,7 +2632,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
           renderAllPaperLists();
         }
       } else if (leftPaperId && targetCatId) {
-        let papers = (await fetch(`/api/v1/papers`).then(r => r.json())) || [];
+        let papers = g_papers;
         const idx = papers.findIndex(p => p.id === leftPaperId);
         if (idx === -1) return;
         
@@ -2609,7 +2651,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
       const name = newCategoryName.value.trim();
       if (!name) return alert('分类名称不能为空');
       
-      let categories = (await fetch(`/api/v1/papers/categories/list`).then(r => r.json())) || [];
+      let categories = g_categories;
       if (categories.some(c => c.name.toLowerCase() === name.toLowerCase())) {
         return alert('分类名称已存在');
       }
@@ -2630,7 +2672,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
     }
     
     async function deleteCategory(categoryId) {
-      let categories = (await fetch(`/api/v1/papers/categories/list`).then(r => r.json())) || [];
+      let categories = g_categories;
       const cat = categories.find(c => c.id === categoryId);
       if (!cat) return;
       
@@ -2639,7 +2681,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
       await fetch(`/api/v1/papers/categories/${categoryId}`, { method: 'DELETE' });
       
       // Clear categoryId and categoryIds from papers using single item updates
-      let papers = (await fetch(`/api/v1/papers`).then(r => r.json())) || [];
+      let papers = g_papers;
       for (const p of papers) {
         const currentCats = getPaperCategoryIds(p);
         if (currentCats.includes(categoryId)) {
@@ -2657,11 +2699,11 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
     }
     
     async function removePaperFromCategory(paperId, categoryId) {
-      let papers = (await fetch(`/api/v1/papers`).then(r => r.json())) || [];
+      let papers = g_papers;
       const paper = papers.find(p => p.id === paperId);
       if (!paper) return;
       
-      let categories = (await fetch(`/api/v1/papers/categories/list`).then(r => r.json())) || [];
+      let categories = g_categories;
       const cat = categories.find(c => c.id === categoryId);
       let isArchived = paper.isArchived;
       let archivedAt = paper.archivedAt;
@@ -2690,7 +2732,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
       newName = newName.trim();
       if (!newName) return alert('分类名称不能为空');
       
-      let categories = (await fetch(`/api/v1/papers/categories/list`).then(r => r.json())) || [];
+      let categories = g_categories;
       if (categories.some(c => c.id !== categoryId && c.name.toLowerCase() === newName.toLowerCase())) {
         return alert('分类名称已存在');
       }
@@ -2704,7 +2746,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
     }
     
     async function archiveCategory(categoryId) {
-      let categories = (await fetch(`/api/v1/papers/categories/list`).then(r => r.json())) || [];
+      let categories = g_categories;
       const cat = categories.find(c => c.id === categoryId);
       if (!cat) return;
       await fetch(`/api/v1/papers/categories/${categoryId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isArchived: true, archivedAt: new Date().toLocaleString() }) });
@@ -2712,7 +2754,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
     }
     
     async function restoreCategory(categoryId) {
-      let categories = (await fetch(`/api/v1/papers/categories/list`).then(r => r.json())) || [];
+      let categories = g_categories;
       const cat = categories.find(c => c.id === categoryId);
       if (!cat) return;
       await fetch(`/api/v1/papers/categories/${categoryId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isArchived: false, archivedAt: '' }) });
@@ -2723,7 +2765,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
     async function renderRefactoredPaperList(papers, allAnswers) {
       if (!refactoredPaperListContainer || !categoriesContainer) return;
       
-      const categories = ((await fetch(`/api/v1/papers/categories/list`).then(r => r.json())) || []).filter(c => !c.isArchived);
+      const categories = g_categories.filter(c => !c.isArchived);
       const activePapers = papers.filter((p) => !isArchivedPaper(p));
 
       // 1. Render Left Side Set List
@@ -3209,7 +3251,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
 
     async function refreshSelfLearningPaperOptions() {
       if (!selfLearningRelatedPaper) return;
-      const papers = ((await fetch(`/api/v1/papers`).then(r => r.json())) || []).filter((p) => !isArchivedPaper(p));
+      const papers = g_papers.filter((p) => !isArchivedPaper(p));
       const gradeValue = selfLearningGrade ? selfLearningGrade.value : 'all';
       selfLearningPaperCandidates = papers.filter((p) => {
         if (gradeValue === 'all') return true;
@@ -3413,11 +3455,11 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
     }
     async function openVideoAnalyticsModal(videoName) {
       if (!videoAnalyticsModal || !videoAnalyticsModalContent) return;
-      const [contents, watchStatsAll, studentPointsMap] = await Promise.all([
+      const [contents, watchStatsAll] = await Promise.all([
         fetch(`/api/v1/self-learning/contents`).then(r => r.json()).then((res) => res || []),
-        fetch(`/api/v1/self-learning/watch-stats`).then(r => r.json()).then((res) => res || {}),
-        fetch(`/api/v1/students/map`).then(r => r.json()).then((res) => res || {})
+        fetch(`/api/v1/self-learning/watch-stats`).then(r => r.json()).then((res) => res || {})
       ]);
+      const studentPointsMap = g_map
       const normalizedName = normalizeVideoResourceName(videoName);
       const matchedContents = contents.filter((item) => normalizeVideoResourceName(item.videoFile) === normalizedName);
       const selfLearningRows = matchedContents.flatMap((item) => {
@@ -4028,14 +4070,14 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
       const contents = (await fetch(`/api/v1/self-learning/contents`).then(r => r.json())) || [];
       const watchStatsAll = (await fetch(`/api/v1/self-learning/watch-stats`).then(r => r.json())) || {};
       const interactionStatsAll = (await fetch(`/api/v1/self-learning/interactions`).then(r => r.json())) || {};
-      const studentPointsMap = (await fetch(`/api/v1/students/map`).then(r => r.json())) || {};
+      const studentPointsMap = g_map;
       const pager = document.getElementById('selfLearningListPagination');
       if (contents.length === 0) {
         selfLearningList.innerHTML = '<div class="text-center text-gray-500 py-4">暂无内容</div>';
         if (pager) { pager.classList.add('hidden'); pager.innerHTML = ''; }
         return;
       }
-      const papers = (await fetch(`/api/v1/papers`).then(r => r.json())) || [];
+      const papers = g_papers;
       const paperMap = {};
       papers.forEach((p) => { paperMap[p.id] = p.name; });
       const sortedContents = contents.sort((a, b) => (b.createTime || 0) - (a.createTime || 0));
@@ -4186,11 +4228,10 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
     }); 
     }
             async function renderArchivedPaperList(paperList, answerList) {
-              const papers = Array.isArray(paperList) ? paperList : ((await fetch(`/api/v1/papers`).then(r => r.json())) || []);
-              const allAnswers = Array.isArray(answerList) ? answerList : ((await fetch(`/api/v1/papers/submissions/records`).then(r => r.json())) || []);
-              const categories = (await fetch(`/api/v1/papers/categories/list`).then(r => r.json())) || [];
+              const papers = Array.isArray(paperList) ? paperList : g_papers;
+              const allAnswers = Array.isArray(answerList) ? answerList : g_records;
               
-              const archivedCategories = categories.filter(c => c.isArchived);
+              const archivedCategories = g_categories.filter(c => c.isArchived);
               const archivedCatIds = archivedCategories.map(c => c.id);
               
               const individuallyArchivedPapers = papers.filter(paper => {
@@ -4399,7 +4440,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
             async function restorePaper(paperId) { await fetch(`/api/v1/papers/${paperId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isArchived: false, archivedAt: '' }) }); renderAllPaperLists(); }
             async function deletePaper(paperId) { await fetch(`/api/v1/papers/${paperId}`, { method: 'DELETE' }); renderAllPaperLists(); }
             async function renamePaper(paperId) {
-              const papers = (await fetch(`/api/v1/papers`).then(r => r.json())) || [];
+              const papers = g_papers;
               const paper = papers.find(p => p.id === paperId);
               if (!paper) return;
               const newName = prompt(`请输入套题 "${paper.name}" 的新标题:`, paper.name);
@@ -4420,7 +4461,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
               alert("重命名成功！");
             }
             async function editPaperDeadline(paperId) {
-              const papers = (await fetch(`/api/v1/papers`).then(r => r.json())) || [];
+              const papers = g_papers;
               const paper = papers.find(p => p.id === paperId);
               if (!paper) return;
               const currentDeadline = paper.deadline || '';
@@ -4434,7 +4475,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
     
     // 🚀 核心：强绑定按钮点击事件，绝不丢失
     async function showAnswerDetails(paperId, targetStudentId = null) { 
-        currentViewingPaperId = paperId; const papers = (await fetch(`/api/v1/papers`).then(r => r.json())) || [], paper = papers.find(p => p.id === paperId), answers = (await fetch(`/api/v1/papers/submissions/records`).then(r => r.json())) || []; let paperAnswers = answers.filter(a => a.paperId === paperId); if (targetStudentId) paperAnswers = paperAnswers.filter(a => a.studentId === targetStudentId); if (!paper) return; if (targetStudentId && paperAnswers.length > 0) detailPaperTitle.textContent = `${paperAnswers[0].studentName} - ${paper.name} 答题详情`; else detailPaperTitle.textContent = `${paper.name} - 答题详情`; 
+        currentViewingPaperId = paperId; const papers = g_papers, paper = papers.find(p => p.id === paperId), answers = g_records; let paperAnswers = answers.filter(a => a.paperId === paperId); if (targetStudentId) paperAnswers = paperAnswers.filter(a => a.studentId === targetStudentId); if (!paper) return; if (targetStudentId && paperAnswers.length > 0) detailPaperTitle.textContent = `${paperAnswers[0].studentName} - ${paper.name} 答题详情`; else detailPaperTitle.textContent = `${paper.name} - 答题详情`; 
         let content = ''; 
         let btnBindings = []; // 保存实体按钮与数据的绑定关系
 
@@ -4538,7 +4579,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
                 const targetAns = paperAnswers[idx];
                 if (!targetAns) return;
                 if (!confirm('确定删除此人的该条作答记录吗？此操作将不可逆转。')) return;
-                let allAnswers = (await fetch(`/api/v1/papers/submissions/records`).then(r => r.json())) || [];
+                let allAnswers = g_records;
                 const removeIdx = allAnswers.findIndex(a => a.paperId === targetAns.paperId && a.studentId === targetAns.studentId && a.submitTime === targetAns.submitTime && a.timeElapsed === targetAns.timeElapsed);
                 if (removeIdx !== -1) {
                     const studentId = targetAns.studentId;
@@ -4556,7 +4597,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
                     const scoreToRemove = oldBestScore - newBestScore;
 
                     if (scoreToRemove > 0) {
-                        const studentPointsData = (await fetch(`/api/v1/students/map`).then(r => r.json())) || {};
+                        const studentPointsData = g_map;
                         if (studentPointsData[studentId]) {
                             studentPointsData[studentId].points = Math.max(0, (studentPointsData[studentId].points || 0) - scoreToRemove);
                             await fetch(`/api/v1/students/${studentId}/points`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(studentPointsData[studentId]) });
@@ -4579,7 +4620,18 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
 
     function initPrizeManagement() { addPrizeBtn.addEventListener('click', addNewPrize); loadPrizes(); }
     async function loadPrizes() { const prizes = (await fetch(`/api/v1/points/prizes`).then(r => r.json())) || []; prizeList.innerHTML = ''; if (prizes.length === 0) return prizeList.innerHTML = '<div class="col-span-3 text-center text-gray-500 py-4">暂无奖品，请添加</div>'; prizes.forEach(prize => { const prizeCard = document.createElement('div'); prizeCard.className = 'border rounded-lg p-4'; prizeCard.innerHTML = `<h4 class="font-medium">${prize.name}</h4><p class="text-sm text-gray-500">${prize.description}</p><p class="text-yellow-600 font-bold mt-1">${prize.points}分</p><div class="mt-2 flex justify-end"><button class="text-red-500 text-sm delete-prize" data-id="${prize.id}"><i class="fa fa-trash mr-1"></i> 删除</button></div>`; prizeList.appendChild(prizeCard); prizeCard.querySelector('.delete-prize').addEventListener('click', function () { if (confirm(`确定要删除${prize.name}吗？`)) deletePrize(this.dataset.id); }); }); }
-    async function addNewPrize() { const name = prizeName.value.trim(), points = parseInt(prizePoints.value), desc = prizeDesc.value.trim(); if (!name || !points) return alert('请填写奖品名称和所需积分'); await fetch('/api/v1/points/prizes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, points, description: desc, icon: 'fa-gift', iconColor: 'text-primary', bgColor: 'bg-blue-100' }) }); prizeName.value = ''; prizePoints.value = '500'; prizeDesc.value = ''; loadPrizes(); alert('奖品添加成功，学生端已同步更新'); }
+    async function addNewPrize() { 
+      const name = prizeName.value.trim(), 
+      points = parseInt(prizePoints.value), 
+      desc = prizeDesc.value.trim(); 
+      if (!name || !points) return alert('请填写奖品名称和所需积分'); 
+      await fetch('/api/v1/points/prizes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, points, description: desc, icon: 'fa-gift', iconColor: 'text-primary', bgColor: 'bg-blue-100' }) }); 
+      prizeName.value = ''; 
+      prizePoints.value = '500'; 
+      prizeDesc.value = '';
+      loadPrizes();
+      alert('奖品添加成功，学生端已同步更新'); 
+    }
     async function deletePrize(prizeId) { await fetch(`/api/v1/points/prizes/${prizeId}`, { method: 'DELETE' }); loadPrizes(); }
 
     const answerConfigModal = document.getElementById('answerConfigModal'), answerConfigModalContent = document.getElementById('answerConfigModalContent'), configAnswerPaperTitle = document.getElementById('configAnswerPaperTitle'), answersConfigList = document.getElementById('answersConfigList');
@@ -4588,7 +4640,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
    // 🚀 升级版：打开配置面板（支持选择题和填空题的视频绑定）
    // 🚀 终极版：打开配置面板（自带视频文件“浏览一键选择”功能）
     async function openAnswerConfigModal(paperId) { 
-        const papers = (await fetch(`/api/v1/papers`).then(r => r.json())) || [], paper = papers.find(p => p.id === paperId); 
+        const papers = g_papers, paper = papers.find(p => p.id === paperId); 
         if (!paper) return alert('未找到该套卷'); 
         currentConfigPaperId = paperId; currentConfigPaper = paper; 
         configAnswerPaperTitle.textContent = `配置答案与视频 - ${paper.name}`; 
@@ -4775,7 +4827,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
             newFbPoints.push(pt);
         }
 
-        let papers = (await fetch(`/api/v1/papers`).then(r => r.json())) || [];
+        let papers = g_papers;
         let paperIndex = papers.findIndex(p => p.id === currentConfigPaperId); 
         if (paperIndex === -1) return alert('配置失败：未找到该套卷'); 
         
@@ -4794,7 +4846,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
         });
         
         // 自动重判分逻辑
-        let allAnswers = (await fetch(`/api/v1/papers/submissions/records`).then(r => r.json())) || [], regradeCount = 0; 
+        let allAnswers = g_records, regradeCount = 0; 
         for (const answer of allAnswers) { 
             if (answer.paperId === currentConfigPaperId && answer.id) { 
                 let newScore = 0; 
@@ -4899,13 +4951,8 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
       
       if (!cPointsInput || !cAccuracyInput || !cDurationInput || !cQuestionsInput || !saveFormulaBtn) return;
       
-      const formula = (await fetch(`/api/v1/config/learningPowerFormula`).then(r => r.json())) || {
-        cPoints: 500,
-        cAccuracy: 2,
-        cDuration: 10,
-        cQuestions: 200
-      };
-      
+      const formula = g_formula
+
       cPointsInput.value = formula.cPoints ?? 500;
       cAccuracyInput.value = formula.cAccuracy ?? 2;
       cDurationInput.value = formula.cDuration ?? 10;
@@ -4941,11 +4988,27 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
       });
     }
 
-    function initStudentManagement() { initFormulaSection(); loadStudentPointsList(); exportStudentsBtn.addEventListener('click', exportStudentData); addStudentBtn.addEventListener('click', openAddStudentModal); cancelStudentModal.addEventListener('click', closeStudentModal); saveStudentBtn.addEventListener('click', handleSaveStudent); studentModal.addEventListener('click', e => e.target === studentModal && closeStudentModal()); if (studentGradeFilter) studentGradeFilter.addEventListener('change', loadStudentPointsList); document.getElementById('sortByIdBtn').addEventListener('click', () => handleStudentSort('id')); document.getElementById('sortByPointsBtn').addEventListener('click', () => handleStudentSort('points')); if (studentCohortInput) { studentCohortInput.addEventListener('input', updateModalGrade); } if (closeSchoolScoreModal) closeSchoolScoreModal.addEventListener('click', closeSchoolScoreModalPanel); if (schoolScoreModal) schoolScoreModal.addEventListener('click', e => e.target === schoolScoreModal && closeSchoolScoreModalPanel()); if (saveSchoolScoreBtn) saveSchoolScoreBtn.addEventListener('click', handleSaveSchoolScore); if (cancelSchoolScoreEditBtn) cancelSchoolScoreEditBtn.addEventListener('click', resetSchoolScoreForm); if (schoolScoreImagesInput) schoolScoreImagesInput.addEventListener('change', handleSchoolScoreImagesUpload); }
+    function initStudentManagement() {
+       initFormulaSection();
+       loadStudentPointsList();
+        exportStudentsBtn.addEventListener('click', exportStudentData); 
+        addStudentBtn.addEventListener('click', openAddStudentModal); 
+        cancelStudentModal.addEventListener('click', closeStudentModal); 
+        saveStudentBtn.addEventListener('click', handleSaveStudent); 
+        studentModal.addEventListener('click', e => e.target === studentModal && closeStudentModal()); 
+        if (studentGradeFilter) studentGradeFilter.addEventListener('change', loadStudentPointsList); 
+        document.getElementById('sortByIdBtn').addEventListener('click', () => handleStudentSort('id')); 
+        document.getElementById('sortByPointsBtn').addEventListener('click', () => handleStudentSort('points')); 
+        if (studentCohortInput) { studentCohortInput.addEventListener('input', updateModalGrade); } 
+        if (closeSchoolScoreModal) closeSchoolScoreModal.addEventListener('click', closeSchoolScoreModalPanel); 
+        if (schoolScoreModal) schoolScoreModal.addEventListener('click', e => e.target === schoolScoreModal && closeSchoolScoreModalPanel()); 
+        if (saveSchoolScoreBtn) saveSchoolScoreBtn.addEventListener('click', handleSaveSchoolScore);
+        if (cancelSchoolScoreEditBtn) cancelSchoolScoreEditBtn.addEventListener('click', resetSchoolScoreForm); 
+        if (schoolScoreImagesInput) schoolScoreImagesInput.addEventListener('change', handleSchoolScoreImagesUpload); }
     function handleStudentSort(field) { if (studentSortField === field) studentSortDirection = studentSortDirection === 'asc' ? 'desc' : 'asc'; else { studentSortField = field; studentSortDirection = 'desc'; } loadStudentPointsList(); }
     
    async function loadStudentPointsList() {
-      const studentPoints = (await fetch(`/api/v1/students/map`).then(r => r.json())) || {};
+      const studentPoints = g_map;
       let studentsArray = Object.values(studentPoints);
       const filterValue = studentGradeFilter ? studentGradeFilter.value : 'all';
 
@@ -5068,7 +5131,7 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
 
     async function renderSchoolScoreList() {
       if (!currentSchoolScoreStudentId) return;
-      const studentPoints = (await fetch(`/api/v1/students/map`).then(r => r.json())) || {};
+      const studentPoints = g_map;
       const student = studentPoints[currentSchoolScoreStudentId];
       const scores = student && Array.isArray(student.schoolScores) ? student.schoolScores : [];
       const totalPages = Math.max(1, Math.ceil(scores.length / SCHOOL_SCORE_PAGE_SIZE));
@@ -5116,7 +5179,7 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
     }
 
     async function startEditSchoolScore(scoreId) {
-      const studentPoints = (await fetch(`/api/v1/students/map`).then(r => r.json())) || {};
+      const studentPoints = g_map;
       const student = studentPoints[currentSchoolScoreStudentId];
       const scores = student && Array.isArray(student.schoolScores) ? student.schoolScores : [];
       const item = scores.find((entry) => entry.id === scoreId);
@@ -5147,7 +5210,7 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
       if (Number.isNaN(totalScore) || totalScore <= 0) return alert('请输入有效总分');
       if (score > totalScore) return alert('分数不能大于总分');
 
-      const studentPoints = (await fetch(`/api/v1/students/map`).then(r => r.json())) || {};
+      const studentPoints = g_map;
       const student = studentPoints[currentSchoolScoreStudentId];
       if (!student) return alert('未找到学生信息');
       if (!Array.isArray(student.schoolScores)) student.schoolScores = [];
@@ -5177,7 +5240,8 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
       }
 
       student.lastUpdate = new Date().toLocaleString() + ' (校内成绩更新)';
-      for (const [__sId, __sData] of Object.entries(studentPoints)) await fetch(`/api/v1/students/${__sId}/points`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(__sData) });
+      // for (const [__sId, __sData] of Object.entries(studentPoints)) 
+      await fetch(`/api/v1/students/${student.id}/points`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(student) });
       resetSchoolScoreForm();
       schoolScorePage = 1;
       await renderSchoolScoreList();
@@ -5187,22 +5251,23 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
     async function deleteSchoolScore(scoreId) {
       if (!currentSchoolScoreStudentId) return;
       if (!confirm('确定要删除这条校内成绩吗？')) return;
-      const studentPoints = (await fetch(`/api/v1/students/map`).then(r => r.json())) || {};
+      const studentPoints = g_map;
       const student = studentPoints[currentSchoolScoreStudentId];
       if (!student || !Array.isArray(student.schoolScores)) return;
       student.schoolScores = student.schoolScores.filter((item) => item.id !== scoreId);
       student.lastUpdate = new Date().toLocaleString() + ' (校内成绩更新)';
-      for (const [__sId, __sData] of Object.entries(studentPoints)) await fetch(`/api/v1/students/${__sId}/points`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(__sData) });
+      // for (const [__sId, __sData] of Object.entries(studentPoints)) await fetch(`/api/v1/students/${__sId}/points`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(__sData) });
+      await fetch(`/api/v1/students/${student.id}/points`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(student) });
       await renderSchoolScoreList();
       await loadStudentPointsList();
       resetSchoolScoreForm();
     }
 
-    async function toggleArchiveStudent(id, name) { if (!confirm(`确定要更改学生状态吗？`)) return; const studentPoints = (await fetch(`/api/v1/students/map`).then(r => r.json())) || {}; if (studentPoints[id]) { await fetch(`/api/v1/students/${id}/points`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isArchived: !studentPoints[id].isArchived }) }); loadStudentPointsList(); loadRankingData(); } }
+    async function toggleArchiveStudent(id, name) { if (!confirm(`确定要更改学生状态吗？`)) return; const studentPoints = g_map; if (studentPoints[id]) { await fetch(`/api/v1/students/${id}/points`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isArchived: !studentPoints[id].isArchived }) }); loadStudentPointsList(); loadRankingData(); } }
     async function deleteStudent(id, name) { 
       if (!confirm(`警告：确定彻底删除学生 ${name || id} 数据吗？不可恢复！`)) return; 
       try {
-        const studentPoints = (await fetch(`/api/v1/students/map`).then(r => r.json())) || {}; 
+        const studentPoints = g_map; 
         if (studentPoints[id]) {
           const res = await fetch(`/api/v1/students/${id}`, { method: 'DELETE' });
           if (!res.ok) throw new Error('删除失败');
@@ -5227,8 +5292,8 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
           studentHistoryModalContent.classList.add('scale-100', 'opacity-100');
         }, 10);
 
-        const allAnswers = (await fetch(`/api/v1/papers/submissions/records`).then(r => r.json())) || [];
-        const allPapers = (await fetch(`/api/v1/papers`).then(r => r.json())) || [];
+        const allAnswers = g_records;
+        const allPapers = g_papers;
         const studentAnswers = allAnswers.filter(a => a.studentId === studentId);
         studentAnswers.sort((a, b) => new Date(b.submitTime) - new Date(a.submitTime));
 
@@ -5486,14 +5551,9 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
       if (studentGaokaoScoreInput.value && (isNaN(gaokaoScore) || gaokaoScore < 0)) return alert('请输入有效的高考分数');
       if (isNaN(points) || points < 0) return alert('请输入有效的积分');
       
-      const formula = (await fetch(`/api/v1/config/learningPowerFormula`).then(r => r.json())) || {
-        cPoints: 500,
-        cAccuracy: 2,
-        cDuration: 10,
-        cQuestions: 200
-      };
+      const formula = g_formula
       
-      const studentPoints = (await fetch(`/api/v1/students/map`).then(r => r.json())) || {};
+      const studentPoints = g_map;
       if (isEditingStudent) {
         if (studentPoints[id]) {
           const studentData = {
@@ -5530,7 +5590,7 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
       }
     }
     async function exportStudentData() {
-      const studentPoints = (await fetch(`/api/v1/students/map`).then(r => r.json())) || {},
+      const studentPoints = g_map,
             studentsArray = Object.values(studentPoints);
       if (studentsArray.length === 0) return alert('无数据');
       const data = studentsArray.map(s => ({
@@ -5551,59 +5611,17 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
       if (!yearSelect) return;
       const currentYear = (await fetch('/api/v1/config/currentSchoolYear').then(r => r.json())) || '2025-2026';
       yearSelect.value = currentYear;
-      await updateAllStudentsGradesForYear(currentYear);
       yearSelect.addEventListener('change', async function() {
         const newYear = this.value;
         await fetch(`/api/v1/config/currentSchoolYear`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: newYear }) });
-        await updateAllStudentsGradesForYear(newYear);
-        if (typeof loadStudentPointsList === 'function') {
-          loadStudentPointsList();
-        }
-        if (typeof loadRankingData === 'function') {
-          loadRankingData();
-        }
+        initSystem()
       });
     }
 
-    async function updateAllStudentsGradesForYear(newYear) {
-      const studentPoints = (await fetch(`/api/v1/students/map`).then(r => r.json())) || {};
-      const yearStart = parseInt(newYear.split('-')[0]);
-      let changed = false;
-      for (const id in studentPoints) {
-        const student = studentPoints[id];
-        if (student.cohort === undefined || student.cohort === null) {
-          const baseYear = 2025; // 存量数据按 2025-2026 学年来计算
-          if (student.grade === '高一') {
-            student.cohort = baseYear + 3;
-          } else if (student.grade === '高二') {
-            student.cohort = baseYear + 2;
-          } else if (student.grade === '高三') {
-            student.cohort = baseYear + 1;
-          } else {
-            student.cohort = baseYear + 3;
-          }
-          changed = true;
-        }
-        const diff = student.cohort - yearStart;
-        let newGrade = '';
-        if (diff === 3) newGrade = '高一';
-        else if (diff === 2) newGrade = '高二';
-        else if (diff === 1) newGrade = '高三';
-        if (student.grade !== newGrade) {
-          student.grade = newGrade;
-          student.lastUpdate = new Date().toLocaleString();
-          changed = true;
-        }
-      }
-      if (changed) {
-        for (const [__sId, __sData] of Object.entries(studentPoints)) await fetch(`/api/v1/students/${__sId}/points`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(__sData) });
-      }
-    }
-
     function initRankingManagement() { loadRankingData(); loadExchangeHistoryData(); exportRankingBtn.addEventListener('click', exportRankingData); exportExchangeBtn.addEventListener('click', exportExchangeData); }
-    async function loadRankingData() { const studentPoints = (await fetch(`/api/v1/students/map`).then(r => r.json())) || {}; let studentsArray = Object.values(studentPoints).filter(s => !s.isArchived); studentsArray.sort((a, b) => b.points - a.points); rankingTableBody.innerHTML = ''; if (studentsArray.length === 0) return rankingTableBody.innerHTML = `<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500">暂无排行</td></tr>`; studentsArray.forEach((student, index) => { const row = document.createElement('tr'); row.innerHTML = `<td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">${index + 1}</td><td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${student.name} (${student.id})</td><td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-accent">${student.points}分</td><td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600">${student.learningPower !== undefined ? student.learningPower : '--'}</td>`; rankingTableBody.appendChild(row); }); }
+    async function loadRankingData() { const studentPoints = g_map; let studentsArray = Object.values(studentPoints).filter(s => !s.isArchived); studentsArray.sort((a, b) => b.points - a.points); rankingTableBody.innerHTML = ''; if (studentsArray.length === 0) return rankingTableBody.innerHTML = `<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500">暂无排行</td></tr>`; studentsArray.forEach((student, index) => { const row = document.createElement('tr'); row.innerHTML = `<td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">${index + 1}</td><td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${student.name} (${student.id})</td><td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-accent">${student.points}分</td><td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600">${student.learningPower !== undefined ? student.learningPower : '--'}</td>`; rankingTableBody.appendChild(row); }); }
     async function loadExchangeHistoryData() { const exchangeRecords = (await fetch(`/api/v1/points/records`).then(r => r.json())) || []; exchangeHistoryTableBody.innerHTML = ''; if (exchangeRecords.length === 0) return exchangeHistoryTableBody.innerHTML = `<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500">暂无记录</td></tr>`; exchangeRecords.forEach(record => { const row = document.createElement('tr'); row.innerHTML = `<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${record.studentName}</td><td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${record.prizeName}</td><td class="px-6 py-4 whitespace-nowrap text-sm text-red-600">-${record.points}分</td><td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${record.time}</td>`; exchangeHistoryTableBody.appendChild(row); }); }
-    async function exportRankingData() { const studentPoints = (await fetch(`/api/v1/students/map`).then(r => r.json())) || {}; let studentsArray = Object.values(studentPoints).filter(s => !s.isArchived); studentsArray.sort((a, b) => b.points - a.points); if (studentsArray.length === 0) return alert('无数据'); const data = studentsArray.map((s, index) => ({ 排名: index + 1, 姓名: s.name, 学号: s.id, 积分: s.points, 学习力: s.learningPower !== undefined ? s.learningPower : '--' })); exportToExcel(data, '排行榜'); }
+    async function exportRankingData() { const studentPoints = g_map; let studentsArray = Object.values(studentPoints).filter(s => !s.isArchived); studentsArray.sort((a, b) => b.points - a.points); if (studentsArray.length === 0) return alert('无数据'); const data = studentsArray.map((s, index) => ({ 排名: index + 1, 姓名: s.name, 学号: s.id, 积分: s.points, 学习力: s.learningPower !== undefined ? s.learningPower : '--' })); exportToExcel(data, '排行榜'); }
     async function exportExchangeData() { const exchangeRecords = (await fetch(`/api/v1/points/records`).then(r => r.json())) || []; if (exchangeRecords.length === 0) return alert('无数据'); const data = exchangeRecords.map(r => ({ 姓名: r.studentName, 学号: r.studentId, 奖品: r.prizeName, 消耗: r.points, 时间: r.time })); exportToExcel(data, '兑换记录'); }
     function exportToExcel(data, fileName) { const ws = XLSX.utils.json_to_sheet(data), wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, fileName); XLSX.writeFile(wb, `${fileName}_${new Date().toLocaleDateString()}.xlsx`); }
     function getBase64(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.readAsDataURL(file); reader.onload = () => resolve(reader.result); reader.onerror = error => reject(error); }); }
@@ -5647,10 +5665,10 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
 
     // ================== 数据分析面板逻辑 ==================
    async function showPaperAnalysis(paperId) {
-        const papers = (await fetch(`/api/v1/papers`).then(r => r.json())) || [];
+        const papers = g_papers;
         const paper = papers.find(p => p.id === paperId);
         if (!paper) return;
-        const answers = (await fetch(`/api/v1/papers/submissions/records`).then(r => r.json())) || [];
+        const answers = g_records;
         const paperAnswers = answers.filter(a => a.paperId === paperId);
 
         document.getElementById('analysisPaperTitle').textContent = paper.name;
@@ -6009,11 +6027,11 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
     // 🚀 核心：直接暴露在全局的呼出函数，最高层级呈现
     window.openGradingModal = async function(studentId, paperId) { 
         try { 
-            const papers = (await fetch(`/api/v1/papers`).then(r => r.json())) || [];
+            const papers = g_papers;
             const paper = papers.find(p => String(p.id) === String(paperId)); 
             if (!paper) { alert('错误：找不到试卷信息'); return; }
             
-            const allAnswers = (await fetch(`/api/v1/papers/submissions/records`).then(r => r.json())) || []; 
+            const allAnswers = g_records; 
             let targetRecordIndex = allAnswers.findIndex(a => String(a.paperId) === String(paperId) && String(a.studentId) === String(studentId) && a.isFirstSubmission); 
             if (targetRecordIndex === -1) {
                 targetRecordIndex = allAnswers.findIndex(a => String(a.paperId) === String(paperId) && String(a.studentId) === String(studentId)); 
@@ -6117,11 +6135,11 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
         if (!currentGradingContext) return; 
         try { 
             const { recordIndex, tempJudgments, studentId } = currentGradingContext;
-            const allAnswers = (await fetch(`/api/v1/papers/submissions/records`).then(r => r.json())) || []; 
+            const allAnswers = g_records; 
             if (!allAnswers[recordIndex]) return alert('记录同步错误，请重新打开'); 
             
             const record = allAnswers[recordIndex];
-            const currentPaper = currentGradingContext.paperId ? (((await fetch(`/api/v1/papers`).then(r => r.json()))) || []).find(p => String(p.id) === String(currentGradingContext.paperId)) : null;
+            const currentPaper = currentGradingContext.paperId ? g_papers.find(p => String(p.id) === String(currentGradingContext.paperId)) : null;
             const beforeBestScore = allAnswers
               .filter(a => String(a.paperId) === String(currentGradingContext.paperId) && String(a.studentId) === String(studentId))
               .reduce((best, item) => Math.max(best, currentPaper ? getRecordTotalScore(item, currentPaper) : (parseFloat(item.score) || 0)), 0);
@@ -6150,7 +6168,7 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
               .reduce((best, item) => Math.max(best, currentPaper ? getRecordTotalScore(item, currentPaper) : (parseFloat(item.score) || 0)), 0);
             const pointsDelta = afterBestScore - beforeBestScore;
             if (pointsDelta !== 0) {
-                const studentPoints = (await fetch(`/api/v1/students/map`).then(r => r.json())) || {};
+                const studentPoints = g_map;
                 if (studentPoints[studentId]) {
                     studentPoints[studentId].points += pointsDelta;
                     studentPoints[studentId].lastUpdate = new Date().toLocaleString() + ' (Teacher Override)';
@@ -6472,8 +6490,8 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
         let startDt = new Date(startDateStr); startDt.setHours(0,0,0,0);
         let endDt = new Date(endDateStr); endDt.setHours(23,59,59,999);
 
-        const allAnswers = (await fetch(`/api/v1/papers/submissions/records`).then(r => r.json())) || [];
-        const allPapers = (await fetch(`/api/v1/papers`).then(r => r.json())) || [];
+        const allAnswers = g_records;
+        const allPapers = g_papers;
 
         // 精准筛选：匹配学生ID + 匹配设定时间区间
         const studentRecords = allAnswers.filter(a => {
