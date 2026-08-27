@@ -65,7 +65,7 @@ export class StudentController {
   }
 
   @Get(':id')
-  async getStudentById(@Param('id') id: string): Promise<Student> {
+  async getStudentById(@Param('id') id: string) {
     return this.studentService.getStudentById(id);
   }
 

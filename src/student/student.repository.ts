@@ -102,6 +102,10 @@ export class StudentRepository {
   /**
    * 获取学生综合统计信息及各项排名
    * 包含：姓名、年级、学号、积分、学力、做题总数、正确率、学习时长及其排名
+   *
+   * 做题总数 / 正确率统计逻辑与前端 summarizeStudentStats 对齐：
+   *   - 选择题：逐题比对学生答案与标准答案，stdVal 为空则跳过
+   *   - 填空题：按 fillInBlankDetails（boolean[]）逐项统计
    */
   async getStudentInfo(id: string): Promise<{
     id: string;
@@ -121,11 +125,40 @@ export class StudentRepository {
     const student = await this.prisma.student.findUnique({ where: { id } });
     if (!student) return null;
 
-    // 获取所有学生的提交记录，用于统计和排名
+    // 获取所有学生、所有答题记录、所有试卷（用于标准答案和填空题数）
     const allStudents = await this.prisma.student.findMany();
     const allAnswers = await this.prisma.studentAnswer.findMany();
+    const allPapers = await this.prisma.paper.findMany();
 
-    // 按学生分组统计提交记录
+    // 建立 paperId -> paper 映射
+    type PaperInfo = {
+      standardAnswers: unknown[];   // 标准答案数组，元素可能是字符串或 { answer, ... }
+      fillInBlankCount: number;
+    };
+    const paperMap = new Map<string, PaperInfo>();
+    for (const p of allPapers) {
+      let standardAnswers: unknown[] = [];
+      try { standardAnswers = JSON.parse(p.answers); } catch { standardAnswers = []; }
+
+      // fillInBlankCount 优先取 options.fillInBlankCount，其次 fillInBlankConfig 长度
+      let fillInBlankCount = 0;
+      if (p.fillInBlankConfig) {
+        try {
+          const cfg = JSON.parse(p.fillInBlankConfig);
+          if (Array.isArray(cfg)) fillInBlankCount = cfg.length;
+        } catch { /* ignore */ }
+      }
+      if (fillInBlankCount === 0 && p.options) {
+        try {
+          const opts = JSON.parse(p.options);
+          fillInBlankCount = Number(opts['fillInBlankCount'] ?? 0) || 0;
+        } catch { /* ignore */ }
+      }
+
+      paperMap.set(p.id, { standardAnswers, fillInBlankCount });
+    }
+
+    // 按学生分组，逐题统计（与前端 summarizeStudentStats 对齐）
     type StudentStat = {
       totalQuestions: number;
       totalScore: number;
@@ -133,29 +166,38 @@ export class StudentRepository {
       studyDuration: number;
     };
     const statMap = new Map<string, StudentStat>();
-
     for (const s of allStudents) {
-      statMap.set(s.id, {
-        totalQuestions: 0,
-        totalScore: 0,
-        totalPoints: 0,
-        studyDuration: 0,
-      });
+      statMap.set(s.id, { totalQuestions: 0, totalScore:0, totalPoints:0, studyDuration: 0 });
     }
 
     for (const ans of allAnswers) {
       const stat = statMap.get(ans.studentId);
       if (!stat) continue;
       // 只统计首次提交，避免重复刷题
-      if (ans.isFirstSubmission) {
-        stat.totalQuestions += 1;
-        stat.totalScore += ans.score;
-        stat.totalPoints += ans.totalPoints;
-        stat.studyDuration += ans.timeElapsed ?? 0;
+      if (!ans.isFirstSubmission) continue;
+
+      const paper = paperMap.get(ans.paperId);
+      if (!paper) continue;
+
+      stat.studyDuration += ans.timeElapsed ?? 0;
+
+      // ① 选择题
+      paper.standardAnswers.forEach((std, index) => {
+        stat.totalQuestions++;
+      });
+
+      // ② 填空题：按 fillInBlankDetails 逐项统计
+      if (paper.fillInBlankCount > 0) {
+        for (let i = 0; i < paper.fillInBlankCount; i++) {
+          stat.totalQuestions++;
+        }
       }
+      stat.totalScore += ans.score;
+      stat.totalPoints += ans.totalPoints;
+      stat.studyDuration += ans.timeElapsed ?? 0;
     }
 
-    // 计算每个学生的正确率
+    // 计算正确率（整数百分比，与前端一致）
     const getAccuracy = (stat: StudentStat): number => {
       if (stat.totalPoints === 0) return 0;
       return (stat.totalScore / stat.totalPoints) * 100;

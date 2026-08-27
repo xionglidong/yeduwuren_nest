@@ -43,6 +43,18 @@ export class PaperController {
     return this.paperService.getAllSubmissions();
   }
 
+  /**
+   * POST /api/v1/papers/submissions/records/by-date-range
+   * 按日期范围查询答题记录，可选按学生过滤
+   * Body: { dateRange: ["yyyy/MM/dd", "yyyy/MM/dd"], studentId?: string }
+   */
+  @Post('submissions/records/by-date-range')
+  async getSubmissionsByDateRange(
+    @Body() body: { dateRange: string[]; studentId?: string },
+  ): Promise<FormattedStudentAnswer[]> {
+    return this.paperService.getSubmissionsByDateRange(body.dateRange, body.studentId);
+  }
+
   @Post(':id/submissions')
   async submitPaper(
     @Param('id') paperId: string,

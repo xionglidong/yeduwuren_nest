@@ -17,9 +17,9 @@ export class StudentService {
     private readonly studentRepository: StudentRepository,
     private readonly prisma: PrismaService,
   ) {}
-
-  async getStudentById(id: string): Promise<Student> {
-    const student = await this.studentRepository.findById(id);
+  
+  async getStudentById(id: string){
+    const student = await this.studentRepository.getStudentInfo(id);
     if (!student) {
       throw new NotFoundException(`Student with ID ${id} not found`);
     }

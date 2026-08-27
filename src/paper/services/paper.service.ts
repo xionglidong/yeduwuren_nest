@@ -75,6 +75,20 @@ export class PaperService {
     let calculatedScore = dto.score ?? 0;
     let totalPoints = dto.totalPoints ?? (paper ? paper.totalPoints : 100);
 
+    const date = new Date(dto.submitTime ?? '');
+
+    if(isNaN(date.getTime())) {
+      dto.submitTime = ''
+    }else{
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        const h = String(date.getHours()).padStart(2, '0');
+        const min = String(date.getMinutes()).padStart(2, '0');
+        const s = String(date.getSeconds()).padStart(2, '0');
+        dto.submitTime = `${y}-${m}-${d} ${h}:${min}:${s}`
+    }
+
     if (paper) {
       totalPoints = paper.totalPoints;
       try {
@@ -217,6 +231,42 @@ export class PaperService {
     const existing = await this.paperRepository.findCategoryById(id);
     if (!existing) throw new NotFoundException(`Category ${id} not found`);
     await this.paperRepository.deleteCategory(id);
+  }
+
+  /**
+   * 按日期范围查询答题记录，可选按学生过滤
+   * - dateRange 和 studentId 均不传：返回所有作答记录
+   * - 仅传 studentId：返回该学生的所有作答记录
+   * - 传 dateRange（可同时传 studentId）：按日期范围（含学生）过滤
+   * @param dateRange  可选，["yyyy/MM/dd", "yyyy/MM/dd"]，第一个为起始，第二个为结束（均含）
+   * @param studentId  可选，仅返回该学生的记录
+   */
+  async getSubmissionsByDateRange(
+    dateRange?: string[],
+    studentId?: string,
+  ): Promise<FormattedStudentAnswer[]> {
+    let startDate: string | undefined;
+    let endDate: string | undefined;
+
+    if (dateRange !== undefined && dateRange !== null) {
+      const DATE_RE = /^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}$/;
+      if (
+        !Array.isArray(dateRange) ||
+        dateRange.length !== 2 ||
+        !DATE_RE.test(dateRange[0]) ||
+        !DATE_RE.test(dateRange[1])
+      ) {
+        throw new Error('dateRange 必须为包含两个 "yyyy/MM/dd" 或 "yyyy-MM-dd" 字符串的数组');
+      }
+      [startDate, endDate] = dateRange;
+    }
+
+    const records = await this.paperRepository.findSubmissionsByDateRange(
+      startDate,
+      endDate,
+      studentId,
+    );
+    return records.map((r) => this.formatSubmission(r));
   }
 
   // ─── Private helpers ─────────────────────────────────────────────────────

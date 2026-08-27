@@ -270,6 +270,64 @@ export class PaperRepository {
     return this.prisma.studentAnswer.findMany({ orderBy: { createdAt: 'desc' } });
   }
 
+  /**
+   * 按日期范围查询答题记录（可选过滤学生）
+   * @param startDate  起始日期字符串，格式 "yyyy-MM-dd"（含），不传则不限起始
+   * @param endDate    结束日期字符串，格式 "yyyy-MM-dd"（含），不传则不限结束
+   * @param studentId  可选，仅返回该学生的记录
+   */
+  async findSubmissionsByDateRange(
+    startDate?: string,
+    endDate?: string,
+    studentId?: string,
+  ): Promise<StudentAnswer[]> {
+    const submitTimeFilter: Record<string, string> = {};
+
+    if (startDate) {
+      submitTimeFilter['gte'] = this.normalizeYmd(startDate);
+    }
+    if (endDate) {
+      submitTimeFilter['lt'] = this.nextDayStr(this.normalizeYmd(endDate));
+    }
+
+    return this.prisma.studentAnswer.findMany({
+      where: {
+        ...(Object.keys(submitTimeFilter).length > 0 ? { submitTime: submitTimeFilter } : {}),
+        ...(studentId ? { studentId } : {}),
+      },
+      orderBy: { submitTime: 'desc' },
+    });
+  }
+  private normalizeYmd(dateStr: string): string {
+    let label = ""
+    if(dateStr.includes('/')){
+      label = '/'
+    }
+    if(dateStr.includes('-')){
+      label = '-'
+    }
+    const parts = dateStr.split(label);
+    const y = parts[0];
+    const m = parts[1].padStart(2, '0');
+    const d = parts[2].padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  /** 将 "yyyy-MM-dd" 推进一天，返回 "yyyy-MM-dd" 字符串 */
+  private nextDayStr(dateStr: string): string {
+    console.log("dateStr",dateStr)
+    const d = new Date(`${dateStr}`);
+    console.log("d",d)
+    d.setDate(d.getDate() + 1);
+    console.log("d2",d)
+    const y = d.getFullYear();
+    console.log("y",y)
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    console.log("m",m)
+    const day = String(d.getDate()).padStart(2, '0');
+    console.log("day",day)
+    return `${y}-${m}-${day}`;
+  }
+
   async countSubmissions(studentId: string, paperId: string): Promise<number> {
     return this.prisma.studentAnswer.count({ where: { studentId, paperId } });
   }
