@@ -21,10 +21,19 @@ export class StudentRepository {
     });
   }
 
-  async findAllAsMap(): Promise<Record<string, Partial<Student>>> {
+  async findAllAsMap(): Promise<Record<string, Omit<Partial<Student>, 'schoolScores'> & { schoolScores: unknown[] }>> {
     const students = await this.findAll();
-    const map: Record<string, Partial<Student>> = {};
+    const map: Record<string, Omit<Partial<Student>, 'schoolScores'> & { schoolScores: unknown[] }> = {};
     for (const student of students) {
+      let schoolScores: unknown[] = [];
+      if (student.schoolScores) {
+        try {
+          const parsed = JSON.parse(student.schoolScores);
+          if (Array.isArray(parsed)) schoolScores = parsed;
+        } catch {
+          // 解析失败时返回空数组
+        }
+      }
       map[student.id] = {
         id: student.id,
         name: student.name,
@@ -34,6 +43,8 @@ export class StudentRepository {
         cohort: student.cohort ?? undefined,
         isArchived: student.isArchived,
         lastUpdate: student.lastUpdate ?? undefined,
+        gaokaoScore: student.gaokaoScore ?? '',
+        schoolScores,
       };
     }
     return map;
@@ -56,6 +67,8 @@ export class StudentRepository {
           cohort: dto.cohort !== undefined ? dto.cohort : existing.cohort,
           isArchived: dto.isArchived !== undefined ? dto.isArchived : existing.isArchived,
           lastUpdate: nowStr,
+          gaokaoScore: dto.gaokaoScore ?? existing.gaokaoScore,
+          schoolScores: JSON.stringify(dto.schoolScores) ?? existing.schoolScores,
         },
       });
     }

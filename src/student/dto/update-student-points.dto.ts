@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsBoolean } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsBoolean, IsArray } from 'class-validator';
 
 export class UpdateStudentPointsDto {
   @IsString()
@@ -32,4 +32,12 @@ export class UpdateStudentPointsDto {
   @IsString()
   @IsOptional()
   lastUpdate?: string;
+  
+  @IsString()
+  @IsOptional()
+  gaokaoScore?: string;
+
+  @IsArray()
+  @IsOptional()
+  schoolScores?: string[];
 }

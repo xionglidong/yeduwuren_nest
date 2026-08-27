@@ -16,6 +16,8 @@ model Student {
   cohort        Int?
   isArchived    Boolean  @default(false)
   lastUpdate    String?
+  gaokaoScore   String?  // 高考成绩
+  schoolScores  String?  // JSON Array string of school exam score objects
   createdAt     DateTime @default(now())
 
   submissions     StudentAnswer[]

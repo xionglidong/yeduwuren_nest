@@ -25,9 +25,10 @@ export class StudentController {
 
   /** Returns { [studentId]: { name, points, grade, ... } } map for frontend compatibility */
   @Get('map')
-  async getStudentsMap(): Promise<Record<string, Partial<Student>>> {
+  async getStudentsMap(): Promise<Record<string, Omit<Partial<Student>, 'schoolScores'> & { schoolScores: unknown[] }>> {
     return this.studentService.getAllStudentsMap();
   }
+
 
   /**
    * POST /api/v1/students/verify

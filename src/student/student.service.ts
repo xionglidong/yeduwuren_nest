@@ -38,9 +38,10 @@ export class StudentService {
     return this.studentRepository.findAll();
   }
 
-  async getAllStudentsMap(): Promise<Record<string, Partial<Student>>> {
+  async getAllStudentsMap(): Promise<Record<string, Omit<Partial<Student>, 'schoolScores'> & { schoolScores: unknown[] }>> {
     return this.studentRepository.findAllAsMap();
   }
+
 
   async upsertStudentPoint(dto: UpdateStudentPointsDto): Promise<Student> {
     return this.studentRepository.upsertStudentPoint(dto);
