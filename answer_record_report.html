@@ -94,6 +94,9 @@
     <button onclick="window.print()" class="bg-blue-600 text-white px-6 py-3 rounded-full shadow-lg hover:bg-blue-700 transition font-bold flex items-center">
       <i class="fa fa-print mr-2"></i> 打印 / 存为PDF
     </button>
+    <button id="saveImgBtn" onclick="saveAsImage()" class="bg-emerald-600 text-white px-6 py-3 rounded-full shadow-lg hover:bg-emerald-700 active:scale-95 transition font-bold flex items-center">
+      <i class="fa fa-picture-o mr-2"></i> 保存为图片
+    </button>
     <button onclick="window.close()" class="bg-gray-700 text-white px-6 py-3 rounded-full shadow-lg hover:bg-gray-800 transition flex items-center">
       <i class="fa fa-times mr-2"></i> 关闭页面
     </button>
@@ -554,6 +557,53 @@
         renderImageList('correctionImages', correctionImages);
       }
     });
+
+    async function saveAsImage() {
+      const btn = document.getElementById('saveImgBtn');
+      const originalHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa fa-spinner fa-spin mr-2"></i> 截图中…';
+      btn.classList.add('opacity-70', 'cursor-not-allowed');
+
+      try {
+        const pageUrl = window.location.href;
+
+        // ★ 关键修复：Playwright 是全新浏览器，没有本页 localStorage
+        // 所以把当前 key 对应的数据一起发给后端，由后端注入
+        const key = new URLSearchParams(window.location.search).get('key');
+        const localStorageData = key ? { [key]: localStorage.getItem(key) } : {};
+
+        const response = await fetch('/api/screenshot/capture', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: pageUrl, localStorageData }),
+        });
+
+        if (!response.ok) {
+          let msg = '截图失败';
+          try { const j = await response.json(); msg = j.message || msg; } catch (_) {}
+          throw new Error(msg);
+        }
+
+        // 将响应 PNG Blob 转成下载链接并触发下载
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        // 用学生姓名 + 时间作为文件名
+        const name = document.getElementById('studentName')?.textContent?.trim() || '报告';
+        const ts = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
+        a.download = `${name}_作答报告_${ts}.png`;
+        a.href = objectUrl;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 5000);
+      } catch (err) {
+        alert('保存图片失败：' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+        btn.classList.remove('opacity-70', 'cursor-not-allowed');
+      }
+    }
   </script>
 </body>
 </html>

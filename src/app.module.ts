@@ -13,6 +13,7 @@ import { TimerModule } from './timer/timer.module';
 import { PointsModule } from './points/points.module';
 import { SelfLearningModule } from './self-learning/self-learning.module';
 import { ConfigStoreModule } from './config-store/config-store.module';
+import { ScreenshotModule } from './screenshot/screenshot.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { ConfigStoreModule } from './config-store/config-store.module';
     TimerModule,
     PointsModule,
     SelfLearningModule,
+    ScreenshotModule,
   ],
 })
 export class AppModule {}

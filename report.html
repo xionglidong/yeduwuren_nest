@@ -72,6 +72,9 @@
     <button onclick="window.print()" class="bg-blue-600 text-white px-6 py-3 rounded-full shadow-lg hover:bg-blue-700 transition font-bold flex items-center">
       <i class="fa fa-print mr-2"></i> 打印 / 存为PDF
     </button>
+    <button id="saveImgBtn" onclick="saveAsImage()" class="bg-emerald-600 text-white px-6 py-3 rounded-full shadow-lg hover:bg-emerald-700 active:scale-95 transition font-bold flex items-center">
+      <i class="fa fa-picture-o mr-2"></i> 保存为图片
+    </button>
     <button onclick="window.close()" class="bg-gray-600 text-white px-6 py-3 rounded-full shadow-lg hover:bg-gray-700 transition flex items-center">
       <i class="fa fa-times mr-2"></i> 关闭页面
     </button>
@@ -1122,6 +1125,55 @@
                 } 
             }
         });
+    }
+
+    async function saveAsImage() {
+      const btn = document.getElementById('saveImgBtn');
+      const originalHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa fa-spinner fa-spin mr-2"></i> 截图中…';
+      btn.classList.add('opacity-70', 'cursor-not-allowed');
+
+      try {
+        // report.html 通过 API 加载数据，无需传 localStorage
+        // 但需把日期筛选条件附在 URL 上，让 Playwright 截到相同视图
+        const startVal = document.getElementById('startDateInput').value;
+        const endVal = document.getElementById('endDateInput').value;
+        const baseUrl = window.location.href.split('?')[0];
+        const params = new URLSearchParams(window.location.search);
+        if (startVal) params.set('_start', startVal);
+        if (endVal) params.set('_end', endVal);
+        const pageUrl = `${baseUrl}?${params.toString()}`;
+
+        const response = await fetch('/api/screenshot/capture', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // 告知后端：此页面无需注入 localStorage，且需等待图表渲染
+          body: JSON.stringify({ url: pageUrl, waitSelector: '#trendChart', waitMs: 1500 }),
+        });
+
+        if (!response.ok) {
+          let msg = '截图失败';
+          try { const j = await response.json(); msg = j.message || msg; } catch (_) {}
+          throw new Error(msg);
+        }
+
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const name = document.getElementById('rptName')?.textContent?.trim() || '报告';
+        const ts = new Date().toISOString().slice(0, 10);
+        a.download = `${name}_学情报告_${ts}.png`;
+        a.href = objectUrl;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 5000);
+      } catch (err) {
+        alert('保存图片失败：' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+        btn.classList.remove('opacity-70', 'cursor-not-allowed');
+      }
     }
   </script>
 </body>
