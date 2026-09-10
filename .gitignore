@@ -29,6 +29,5 @@ video/
 .db-wal
 dist/
 *.m4v
-*.db
 *.db-journal
 .DS_Store
