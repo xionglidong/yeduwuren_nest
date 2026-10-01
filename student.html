@@ -32,6 +32,44 @@
     .category-chevron-icon { transition: transform 0.2s ease; display: inline-block; }
     .category-chevron-icon.rotated { transform: rotate(-90deg); }
 
+    /* prediction-section 样式参考 demo.html */
+    .prediction-card {
+      background: linear-gradient(180deg, rgba(22, 48, 75, 0.88), rgba(16, 34, 58, 0.95));
+      border: 1px solid rgba(62, 230, 224, 0.22);
+      border-radius: 20px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 10px 30px rgba(0,0,0,0.25);
+      padding: 16px 12px 12px;
+      margin-top: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      color: #eaf4fb;
+      overflow: hidden;
+    }
+    .prediction-head { display: flex; justify-content: space-between; align-items: center; padding: 0 4px; }
+    .prediction-title { font-size: 14px; color: #8ea6bd; font-weight: 500; }
+    .prediction-badge {
+      color: #ffd84a;
+      font-weight: 700;
+      font-size: 12px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      border: 1.5px solid #3ee6e0;
+      background: rgba(62, 230, 224, 0.08);
+      box-shadow: 0 0 12px rgba(62, 230, 224, 0.35), inset 0 0 8px rgba(62, 230, 224, 0.15);
+      white-space: nowrap;
+    }
+    .prediction-empty { color: #8ea6bd; text-align: center; font-size: 28px; padding: 32px 0; }
+    .prediction-figure { width: 100%; height: 220px; margin: 0; overflow: visible; }
+    .prediction-figure svg { width: 100%; height: 100%; overflow: visible; display: block; }
+    @keyframes pred-draw { to { stroke-dashoffset: 0; } }
+    @keyframes pred-fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    .pred-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: pred-draw 1.4s cubic-bezier(0.65, 0, 0.35, 1) forwards; }
+    .pred-fade { opacity: 0; animation: pred-fade-up 0.6s ease-out forwards; }
+    @media (prefers-reduced-motion: reduce) {
+      .pred-draw, .pred-fade { animation: none; opacity: 1; stroke-dashoffset: 0; transform: none; }
+    }
+
     @font-face {
         font-family: "iconfont"; /* Project id 5190730 */
         src: url('//at.alicdn.com/t/c/font_5190730_8nw1dzwgwx4.woff2?t=1780584853957') format('woff2'),
@@ -110,15 +148,13 @@
             </div>
           </div>
         </div>
-        <div id="prediction-section" class="mt-4 pt-4 border-t hidden">
-          <div class="flex items-center justify-between mb-2">
-            <h4 class="text-sm font-bold text-gray-700"><i class="fa fa-line-chart text-primary mr-1"></i>阶段目标预测</h4>
-            <span id="prediction-summary" class="text-xs font-bold text-indigo-600"></span>
+        <div id="prediction-section" class="prediction-card hidden">
+          <div class="prediction-head">
+            <span class="prediction-title"><i class="fa fa-line-chart mr-1"></i>阶段目标预测</span>
+            <span id="prediction-summary" class="prediction-badge"></span>
           </div>
-          <div class="relative" style="height: 220px;">
-            <canvas id="predictionChart"></canvas>
-          </div>
-          <p id="prediction-empty" class="hidden text-center text-xs text-gray-400 py-8"><i class="fa fa-inbox mr-1"></i>暂无阶段预测数据</p>
+          <figure id="predictionChart" class="prediction-figure"></figure>
+          <p id="prediction-empty" class="prediction-empty hidden"><i class="fa fa-inbox mr-1"></i>暂无阶段预测数据</p>
         </div>
       </div>
     <div id="stats-dashboard" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8 hidden fade-in"><div id="statPapersCard" class="bg-white rounded-xl shadow-md p-4 flex items-center justify-between transition-transform hover:scale-105 hover:shadow-lg duration-200 cursor-pointer border border-blue-200 hover:border-blue-400 relative group"><div class="absolute -top-2 -right-2 bg-blue-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm"><i class="fa fa-hand-pointer-o mr-1"></i>点击查看</div><div><p class="text-sm text-gray-500 font-medium flex items-center">已做任务<i class="fa fa-angle-right ml-1 text-blue-500"></i></p><p class="text-3xl font-bold text-gray-800 mt-1" id="stat-papers">0</p></div><div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-500 text-xl shadow-sm group-hover:bg-blue-200 transition-colors"><i class="fa fa-book"></i></div></div><div class="bg-white rounded-xl shadow-md p-4 flex items-center justify-between transition-transform hover:scale-105 duration-200"><div><p class="text-sm text-gray-500 font-medium">做题总数</p><p class="text-3xl font-bold text-indigo-600 mt-1" id="stat-total-questions">0</p><p class="text-xs text-indigo-500 mt-1 font-medium" id="stat-total-questions-rank">排名：暂无</p></div><div class="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-500 text-xl shadow-sm"><i class="fa fa-pencil"></i></div></div><div id="statWrongQuestionsCard" class="bg-white rounded-xl shadow-md p-4 flex items-center justify-between transition-transform hover:scale-105 hover:shadow-lg duration-200 cursor-pointer border border-red-200 hover:border-red-400 relative group"><div class="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm"><i class="fa fa-hand-pointer-o mr-1"></i>点击查看</div><div><p class="text-sm text-gray-500 font-medium flex items-center">累计错题<i class="fa fa-angle-right ml-1 text-red-500"></i></p><p class="text-3xl font-bold text-red-500 mt-1" id="stat-wrong-questions">0</p></div><div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center text-red-500 text-xl shadow-sm group-hover:bg-red-200 transition-colors"><i class="fa fa-times-circle"></i></div></div><div class="bg-white rounded-xl shadow-md p-4 flex items-center justify-between transition-transform hover:scale-105 duration-200"><div><p class="text-sm text-gray-500 font-medium">正确率</p><p class="text-3xl font-bold text-green-600 mt-1" id="stat-accuracy">0%</p><p class="text-xs text-green-600 mt-1 font-medium" id="stat-accuracy-rank">排名：暂无</p></div><div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center text-green-500 text-xl shadow-sm"><i class="fa fa-pie-chart"></i></div></div><div class="bg-white rounded-xl shadow-md p-4 flex items-center justify-between transition-transform hover:scale-105 duration-200"><div><p class="text-sm text-gray-500 font-medium">学习时长</p><p class="text-2xl font-bold text-violet-600 mt-1" id="stat-learning-time">0分钟</p><p class="text-xs text-violet-500 mt-1 font-medium" id="stat-learning-time-rank">排名：暂无</p></div><div class="w-12 h-12 bg-violet-100 rounded-full flex items-center justify-center text-violet-500 text-xl shadow-sm"><i class="fa fa-clock-o"></i></div></div></div>
@@ -484,7 +520,6 @@
     const learningCustomSection = studentCategorySection, selfLearningContentList = null, customPaperList = null;
     const selfLearningModal = document.getElementById('selfLearningModal'), selfLearningModalContent = document.getElementById('selfLearningModalContent'), selfLearningModalTitle = document.getElementById('selfLearningModalTitle'), selfLearningModalSummary = document.getElementById('selfLearningModalSummary'), selfLearningVideoPlayer = document.getElementById('selfLearningVideoPlayer'), selfLearningDanmuLayer = document.getElementById('selfLearningDanmuLayer'), selfLearningLikeBtn = document.getElementById('selfLearningLikeBtn'), selfLearningLikeText = document.getElementById('selfLearningLikeText'), selfLearningLikeCount = document.getElementById('selfLearningLikeCount'), selfLearningDanmuCount = document.getElementById('selfLearningDanmuCount'), selfLearningCommentCount = document.getElementById('selfLearningCommentCount'), selfLearningDanmuInput = document.getElementById('selfLearningDanmuInput'), selfLearningSendDanmuBtn = document.getElementById('selfLearningSendDanmuBtn'), selfLearningCommentInput = document.getElementById('selfLearningCommentInput'), selfLearningSendCommentBtn = document.getElementById('selfLearningSendCommentBtn'), selfLearningCommentList = document.getElementById('selfLearningCommentList'), selfLearningPaperLabel = document.getElementById('selfLearningPaperLabel'), startSelfLearningPaperBtn = document.getElementById('startSelfLearningPaperBtn'), closeSelfLearningModalBtn = document.getElementById('closeSelfLearningModalBtn');
     const growthTrendCard = null, growthQuestionChart = null, growthAccuracyChart = null, growthPeriodButtons = [];
-    let predictionChartInst = null;
     const noExchangeHint = document.createElement('div'); noExchangeHint.className = 'text-center text-gray-500 py-6'; noExchangeHint.innerHTML = '<i class="fa fa-inbox text-3xl mb-2"></i><p>暂无兑换记录</p>';
     const editPrizesBtn = document.getElementById('edit-prizes-btn'), prizeEditForm = document.getElementById('prize-edit-form'), cancelEditPrize = document.getElementById('cancel-edit-prize'), savePrize = document.getElementById('save-prize'), prizesContainer = document.getElementById('prizes-container');
     // const grade1PaperList = document.getElementById('grade1PaperList'), grade2PaperList = document.getElementById('grade2PaperList'), grade3PaperList = document.getElementById('grade3PaperList'), grade1PaperCount = document.getElementById('grade1PaperCount'), grade2PaperCount = document.getElementById('grade2PaperCount'), grade3PaperCount = document.getElementById('grade3PaperCount');
@@ -704,7 +739,8 @@
      const section = document.getElementById('prediction-section');
      const summaryEl = document.getElementById('prediction-summary');
      const emptyEl = document.getElementById('prediction-empty');
-     if (!section) return;
+     const chartEl = document.getElementById('predictionChart');
+     if (!section || !chartEl) return;
      section.classList.remove('hidden');
 
      const data = await fetchJson(`/api/v1/prediction/phase-target/${studentInfo.id}`);
@@ -713,12 +749,14 @@
        emptyEl.classList.remove('hidden');
        emptyEl.innerHTML = '<i class="fa fa-cog mr-1"></i>管理员尚未配置预测时间范围';
        summaryEl.textContent = '';
+       chartEl.innerHTML = '';
        return;
      }
      if (!data.nodes || data.nodes.length === 0) {
        emptyEl.classList.remove('hidden');
        emptyEl.innerHTML = '<i class="fa fa-inbox mr-1"></i>该阶段暂无答题记录';
        summaryEl.textContent = '';
+       chartEl.innerHTML = '';
        return;
      }
 
@@ -730,44 +768,120 @@
        : String(data.predictedScore);
      summaryEl.textContent = `预测下一节点（${nextLabel}）: ${rangeText} 分 · ${trendText}`;
 
-     if (predictionChartInst) predictionChartInst.destroy();
+     chartEl.innerHTML = buildPredictionChart(data.nodes, data.predictedScore, data.predictedScoreRange, nextLabel);
+   }
 
-     const labels = data.nodes.map(n => n.label);
-     const scores = data.nodes.map(n => n.score);
+   function smoothPath(pts) {
+     if (!pts || pts.length === 0) return '';
+     let d = `M${pts[0][0]},${pts[0][1]}`;
+     for (let i = 0; i < pts.length - 1; i++) {
+       const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+       const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6;
+       const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6;
+       d += ` C${c1x},${c1y} ${c2x},${c2y} ${p2[0]},${p2[1]}`;
+     }
+     return d;
+   }
 
-     predictionChartInst = new Chart(document.getElementById('predictionChart'), {
-       type: 'line',
-       data: {
-         labels: [...labels, nextLabel],
-         datasets: [
-           {
-             label: '实际节点',
-             data: [...scores, null],
-             borderColor: '#4F46E5',
-             backgroundColor: 'rgba(79,70,229,0.1)',
-             fill: true,
-             tension: 0.3,
-             pointRadius: 4,
-             pointBackgroundColor: '#4F46E5'
-           },
-           {
-             label: nextLabel,
-             data: [...Array(Math.max(0, scores.length - 1)).fill(null), scores[scores.length - 1], data.predictedScore],
-             borderColor: '#F59E0B',
-             backgroundColor: 'rgba(245,158,11,0.15)',
-             borderDash: [6, 4],
-             pointRadius: [...Array(scores.length).fill(0), 6],
-             pointBackgroundColor: '#F59E0B'
-           }
-         ]
-       },
-       options: {
-         responsive: true,
-         maintainAspectRatio: false,
-         plugins: { legend: { display: false } },
-         scales: { y: { min: 0, max: 150, title: { display: true, text: '阶段目标分' } } }
-       }
-     });
+   function buildPredictionChart(nodes, predictedScore, predictedScoreRange, nextLabel) {
+     const scores = nodes.map(n => n.score);
+     const labels = nodes.map(n => n.label);
+     const n = nodes.length;
+
+     const NODE_GAP = 78;
+     const PAD_X = 40;
+     const AXIS_X = 30;
+     const AXIS_Y = 240;
+     const H = 300;
+     const W = Math.max(320, PAD_X + n * NODE_GAP + NODE_GAP + PAD_X);
+
+     const xNode = (i) => PAD_X + i * NODE_GAP;
+     const xPred = PAD_X + n * NODE_GAP;
+     const yScore = (s) => AXIS_Y - s * (AXIS_Y - 30) / 150;
+
+     const quiz = scores.map((s, i) => [xNode(i), yScore(s)]);
+     const last = quiz[quiz.length - 1];
+     const predPt = [xPred, yScore(predictedScore)];
+     const forecast = n >= 2 ? [quiz[n - 2], last, predPt] : [last, predPt];
+
+     const gridY = [0, 50, 100, 150].map(s =>
+       `<line x1="${AXIS_X}" x2="${W - 20}" y1="${yScore(s)}" y2="${yScore(s)}" stroke="#8ea6bd" stroke-opacity="0.14" stroke-dasharray="3 4"/>`).join('');
+
+     const xLabels = [];
+     for (let i = 0; i < n; i++) xLabels.push([xNode(i), labels[i]]);
+     xLabels.push([xPred, nextLabel]);
+
+     const gridX = xLabels.map(([x], i) => {
+       const isPred = i === n;
+       return `<line x1="${x}" x2="${x}" y1="30" y2="${AXIS_Y}" stroke="${isPred ? '#ffd84a' : '#8ea6bd'}" stroke-opacity="${isPred ? 0.5 : 0.14}" stroke-dasharray="3 4"/>`;
+     }).join('');
+
+     const dots = quiz.map(([x, y], i) => `
+       <g class="pred-fade" style="animation-delay:${0.15 * i}s">
+         <circle cx="${x}" cy="${y}" r="4.6" fill="#0a1626" stroke="#3ee6e0" stroke-width="2" filter="url(#pred-glow)"/>
+         <text x="${x}" y="${y - 13}" text-anchor="middle" font-size="28" font-weight="600" fill="#eaf4fb">${scores[i]}</text>
+       </g>`).join('');
+
+     const callout = `
+       <g class="pred-fade" style="animation-delay:${0.8 + n * 0.15}s">
+         <rect x="${predPt[0] - 20}" y="${predPt[1] - 38}" width="40" height="26" rx="6" fill="#10223a" stroke="#3ee6e0" stroke-opacity="0.35"/>
+         <text x="${predPt[0]}" y="${predPt[1] - 21}" text-anchor="middle" font-size="28" font-weight="700" fill="#ffd84a">${predictedScore}</text>
+         <circle cx="${predPt[0]}" cy="${predPt[1]}" r="5" fill="#ffd84a" stroke="#eaf4fb" stroke-width="1.6" filter="url(#pred-glow)"/>
+       </g>`;
+
+     let rangeBand = '';
+     if (predictedScoreRange) {
+       const yHigh = yScore(predictedScoreRange.max);
+       const yLow = yScore(predictedScoreRange.min);
+       rangeBand = `
+         <path class="pred-fade" style="animation-delay:1.0s" fill="url(#pred-band)"
+           d="M${last[0]},${last[1]} L${predPt[0]},${yHigh} L${W + 10},${yHigh} L${W + 10},${yLow} L${predPt[0]},${yLow} Z"/>
+         <line x1="${last[0]}" x2="${W + 10}" y1="${last[1]}" y2="${last[1]}" stroke="#3ee6e0" stroke-opacity="0.35" stroke-dasharray="3 4"/>`;
+     }
+
+     const axis = `
+       <g stroke="#8ea6bd" stroke-opacity="0.5" fill="none">
+         <line x1="${AXIS_X}" y1="${AXIS_Y}" x2="${AXIS_X}" y2="22"/>
+         <path d="M${AXIS_X - 3},28 L${AXIS_X},21 L${AXIS_X + 3},28"/>
+         <line x1="${AXIS_X}" y1="${AXIS_Y}" x2="${W - 12}" y2="${AXIS_Y}"/>
+         <path d="M${W - 18},${AXIS_Y - 3} L${W - 11},${AXIS_Y} L${W - 18},${AXIS_Y + 3}"/>
+       </g>`;
+
+     const actualPath = `<path class="pred-draw" d="${smoothPath(quiz)}" fill="none" stroke="#3ee6e0" stroke-width="2.4" stroke-linecap="round" pathLength="1" filter="url(#pred-glow)"/>`;
+     const forecastPath = `<path class="pred-draw" style="animation-delay:0.6s" d="${smoothPath(forecast)}" fill="none" stroke="url(#pred-fc)" stroke-width="2.4" stroke-linecap="round" pathLength="1" filter="url(#pred-glow)"/>`;
+
+     const yLabels = [0, 50, 100, 150].map(s =>
+       `<text x="${AXIS_X - 10}" y="${yScore(s) + 4}" text-anchor="end" font-size="18" fill="#8ea6bd">${s}</text>`).join('');
+
+     const xLabelEls = xLabels.map(([x, l]) =>
+       `<text x="${x}" y="${AXIS_Y + 24}" text-anchor="end" transform="rotate(-35, ${x}, ${AXIS_Y + 24})" font-size="18" fill="#8ea6bd">${l}</text>`).join('');
+
+     return `
+       <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="阶段目标预测">
+         <defs>
+           <linearGradient id="pred-band" x1="0" x2="1">
+             <stop offset="0%" stop-color="#3ee6e0" stop-opacity="0"/>
+             <stop offset="45%" stop-color="#3ee6e0" stop-opacity="0.18"/>
+             <stop offset="100%" stop-color="#3ee6e0" stop-opacity="0.32"/>
+           </linearGradient>
+           <linearGradient id="pred-fc" x1="0" x2="1">
+             <stop offset="0%" stop-color="#ffd84a" stop-opacity="0"/>
+             <stop offset="30%" stop-color="#ffd84a" stop-opacity="0.9"/>
+             <stop offset="100%" stop-color="#ffd84a"/>
+           </linearGradient>
+           <filter id="pred-glow" x="-50%" y="-50%" width="200%" height="200%">
+             <feGaussianBlur stdDeviation="2.4" result="b"/>
+             <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+           </filter>
+         </defs>
+         ${gridY}${gridX}
+         ${rangeBand}
+         ${axis}
+         ${actualPath}
+         ${forecastPath}
+         ${dots}${callout}
+         ${yLabels}${xLabelEls}
+       </svg>`;
    }
 
    function switchTab(tabName) {
