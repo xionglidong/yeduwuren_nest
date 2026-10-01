@@ -45,6 +45,7 @@
       gap: 10px;
       color: #eaf4fb;
       overflow: hidden;
+      padding-bottom: 40px;
     }
     .prediction-head { display: flex; justify-content: space-between; align-items: center; padding: 0 4px; }
     .prediction-title { font-size: 14px; color: #8ea6bd; font-weight: 500; }
@@ -60,7 +61,7 @@
       white-space: nowrap;
     }
     .prediction-empty { color: #8ea6bd; text-align: center; font-size: 28px; padding: 32px 0; }
-    .prediction-figure { width: 100%; height: 220px; margin: 0; overflow: visible; }
+    .prediction-figure { width: 100%; height: 280px; margin: 0; overflow: visible; }
     .prediction-figure svg { width: 100%; height: 100%; overflow: visible; display: block; }
     @keyframes pred-draw { to { stroke-dashoffset: 0; } }
     @keyframes pred-fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -734,6 +735,8 @@
           // updateLogoutButtonState();
    }
 
+   let currentPredictionData = null;
+
    async function renderPhasePrediction() {
      if (!studentInfo || !studentInfo.id) return;
      const section = document.getElementById('prediction-section');
@@ -744,6 +747,7 @@
      section.classList.remove('hidden');
 
      const data = await fetchJson(`/api/v1/prediction/phase-target/${studentInfo.id}`);
+     currentPredictionData = data;
 
      if (!data || data.configured === false) {
        emptyEl.classList.remove('hidden');
@@ -768,8 +772,23 @@
        : String(data.predictedScore);
      summaryEl.textContent = `预测下一节点（${nextLabel}）: ${rangeText} 分 · ${trendText}`;
 
-     chartEl.innerHTML = buildPredictionChart(data.nodes, data.predictedScore, data.predictedScoreRange, nextLabel);
+     const rect = chartEl.getBoundingClientRect();
+     chartEl.innerHTML = buildPredictionChart(data.nodes, data.predictedScore, data.predictedScoreRange, nextLabel, Math.round(rect.width), Math.round(rect.height));
    }
+
+   function rerenderPredictionChart() {
+     if (!currentPredictionData || !currentPredictionData.nodes || currentPredictionData.nodes.length === 0) return;
+     const chartEl = document.getElementById('predictionChart');
+     if (!chartEl) return;
+     const nextLabel = currentPredictionData.nextNodeLabel || '预测';
+     const rect = chartEl.getBoundingClientRect();
+     chartEl.innerHTML = buildPredictionChart(currentPredictionData.nodes, currentPredictionData.predictedScore, currentPredictionData.predictedScoreRange, nextLabel, Math.round(rect.width), Math.round(rect.height));
+   }
+
+   window.addEventListener('resize', () => {
+     clearTimeout(window.__predResizeTimer);
+     window.__predResizeTimer = setTimeout(rerenderPredictionChart, 150);
+   });
 
    function smoothPath(pts) {
      if (!pts || pts.length === 0) return '';
@@ -783,21 +802,23 @@
      return d;
    }
 
-   function buildPredictionChart(nodes, predictedScore, predictedScoreRange, nextLabel) {
+   function buildPredictionChart(nodes, predictedScore, predictedScoreRange, nextLabel, containerWidth, containerHeight) {
      const scores = nodes.map(n => n.score);
      const labels = nodes.map(n => n.label);
      const n = nodes.length;
 
-     const NODE_GAP = 78;
-     const PAD_X = 40;
+     const PAD_X = 80;
      const AXIS_X = 30;
-     const AXIS_Y = 240;
-     const H = 300;
-     const W = Math.max(320, PAD_X + n * NODE_GAP + NODE_GAP + PAD_X);
+     // viewBox 尺寸与容器实际尺寸一致，X 轴占满整个容器宽度
+     const W = Math.max(320, containerWidth || 704);
+     const H = Math.max(180, containerHeight || 280);
+     const AXIS_Y = H - 55;
+     const TOP = 30;
+     const gap = n > 0 ? (W - PAD_X * 2) / n : 78;
 
-     const xNode = (i) => PAD_X + i * NODE_GAP;
-     const xPred = PAD_X + n * NODE_GAP;
-     const yScore = (s) => AXIS_Y - s * (AXIS_Y - 30) / 150;
+     const xNode = (i) => PAD_X + i * gap;
+     const xPred = W - PAD_X;
+     const yScore = (s) => AXIS_Y - s * (AXIS_Y - TOP) / 150;
 
      const quiz = scores.map((s, i) => [xNode(i), yScore(s)]);
      const last = quiz[quiz.length - 1];
@@ -813,20 +834,20 @@
 
      const gridX = xLabels.map(([x], i) => {
        const isPred = i === n;
-       return `<line x1="${x}" x2="${x}" y1="30" y2="${AXIS_Y}" stroke="${isPred ? '#ffd84a' : '#8ea6bd'}" stroke-opacity="${isPred ? 0.5 : 0.14}" stroke-dasharray="3 4"/>`;
+       return `<line x1="${x}" x2="${x}" y1="${TOP}" y2="${AXIS_Y}" stroke="${isPred ? '#ffd84a' : '#8ea6bd'}" stroke-opacity="${isPred ? 0.5 : 0.14}" stroke-dasharray="3 4"/>`;
      }).join('');
 
      const dots = quiz.map(([x, y], i) => `
        <g class="pred-fade" style="animation-delay:${0.15 * i}s">
-         <circle cx="${x}" cy="${y}" r="4.6" fill="#0a1626" stroke="#3ee6e0" stroke-width="2" filter="url(#pred-glow)"/>
-         <text x="${x}" y="${y - 13}" text-anchor="middle" font-size="28" font-weight="600" fill="#eaf4fb">${scores[i]}</text>
+         <circle cx="${x}" cy="${y}" r="5" fill="#0a1626" stroke="#3ee6e0" stroke-width="2" filter="url(#pred-glow)"/>
+         <text x="${x}" y="${y - 16}" text-anchor="middle" font-size="14" font-weight="600" fill="#eaf4fb">${scores[i]}</text>
        </g>`).join('');
 
      const callout = `
        <g class="pred-fade" style="animation-delay:${0.8 + n * 0.15}s">
-         <rect x="${predPt[0] - 20}" y="${predPt[1] - 38}" width="40" height="26" rx="6" fill="#10223a" stroke="#3ee6e0" stroke-opacity="0.35"/>
-         <text x="${predPt[0]}" y="${predPt[1] - 21}" text-anchor="middle" font-size="28" font-weight="700" fill="#ffd84a">${predictedScore}</text>
-         <circle cx="${predPt[0]}" cy="${predPt[1]}" r="5" fill="#ffd84a" stroke="#eaf4fb" stroke-width="1.6" filter="url(#pred-glow)"/>
+         <rect x="${predPt[0] - 24}" y="${predPt[1] - 44}" width="48" height="30" rx="6" fill="#10223a" stroke="#3ee6e0" stroke-opacity="0.35"/>
+         <text x="${predPt[0]}" y="${predPt[1] - 25}" text-anchor="middle" font-size="14" font-weight="700" fill="#ffd84a">${predictedScore}</text>
+         <circle cx="${predPt[0]}" cy="${predPt[1]}" r="5.5" fill="#ffd84a" stroke="#eaf4fb" stroke-width="1.6" filter="url(#pred-glow)"/>
        </g>`;
 
      let rangeBand = '';
@@ -835,14 +856,14 @@
        const yLow = yScore(predictedScoreRange.min);
        rangeBand = `
          <path class="pred-fade" style="animation-delay:1.0s" fill="url(#pred-band)"
-           d="M${last[0]},${last[1]} L${predPt[0]},${yHigh} L${W + 10},${yHigh} L${W + 10},${yLow} L${predPt[0]},${yLow} Z"/>
-         <line x1="${last[0]}" x2="${W + 10}" y1="${last[1]}" y2="${last[1]}" stroke="#3ee6e0" stroke-opacity="0.35" stroke-dasharray="3 4"/>`;
+           d="M${last[0]},${last[1]} L${predPt[0]},${yHigh} L${W},${yHigh} L${W},${yLow} L${predPt[0]},${yLow} Z"/>
+         <line x1="${last[0]}" x2="${W}" y1="${last[1]}" y2="${last[1]}" stroke="#3ee6e0" stroke-opacity="0.35" stroke-dasharray="3 4"/>`;
      }
 
      const axis = `
        <g stroke="#8ea6bd" stroke-opacity="0.5" fill="none">
-         <line x1="${AXIS_X}" y1="${AXIS_Y}" x2="${AXIS_X}" y2="22"/>
-         <path d="M${AXIS_X - 3},28 L${AXIS_X},21 L${AXIS_X + 3},28"/>
+         <line x1="${AXIS_X}" y1="${AXIS_Y}" x2="${AXIS_X}" y2="${TOP - 8}"/>
+         <path d="M${AXIS_X - 3},${TOP - 2} L${AXIS_X},${TOP - 9} L${AXIS_X + 3},${TOP - 2}"/>
          <line x1="${AXIS_X}" y1="${AXIS_Y}" x2="${W - 12}" y2="${AXIS_Y}"/>
          <path d="M${W - 18},${AXIS_Y - 3} L${W - 11},${AXIS_Y} L${W - 18},${AXIS_Y + 3}"/>
        </g>`;
@@ -851,10 +872,10 @@
      const forecastPath = `<path class="pred-draw" style="animation-delay:0.6s" d="${smoothPath(forecast)}" fill="none" stroke="url(#pred-fc)" stroke-width="2.4" stroke-linecap="round" pathLength="1" filter="url(#pred-glow)"/>`;
 
      const yLabels = [0, 50, 100, 150].map(s =>
-       `<text x="${AXIS_X - 10}" y="${yScore(s) + 4}" text-anchor="end" font-size="18" fill="#8ea6bd">${s}</text>`).join('');
+       `<text x="${AXIS_X - 12}" y="${yScore(s) + 5}" text-anchor="end" font-size="12" fill="#8ea6bd">${s}</text>`).join('');
 
      const xLabelEls = xLabels.map(([x, l]) =>
-       `<text x="${x}" y="${AXIS_Y + 24}" text-anchor="end" transform="rotate(-35, ${x}, ${AXIS_Y + 24})" font-size="18" fill="#8ea6bd">${l}</text>`).join('');
+       `<text x="${x}" y="${AXIS_Y + 28}" text-anchor="end" transform="rotate(-35, ${x}, ${AXIS_Y + 28})" font-size="12" fill="#8ea6bd">${l}</text>`).join('');
 
      return `
        <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="阶段目标预测">
