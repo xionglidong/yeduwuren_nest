@@ -314,17 +314,11 @@ export class PaperRepository {
   }
   /** 将 "yyyy-MM-dd" 推进一天，返回 "yyyy-MM-dd" 字符串 */
   private nextDayStr(dateStr: string): string {
-    console.log("dateStr",dateStr)
     const d = new Date(`${dateStr}`);
-    console.log("d",d)
     d.setDate(d.getDate() + 1);
-    console.log("d2",d)
     const y = d.getFullYear();
-    console.log("y",y)
     const m = String(d.getMonth() + 1).padStart(2, '0');
-    console.log("m",m)
     const day = String(d.getDate()).padStart(2, '0');
-    console.log("day",day)
     return `${y}-${m}-${day}`;
   }
 

@@ -553,6 +553,33 @@
             </div>
         </div>
 
+        <!-- 阶段目标预测时间范围 Card -->
+        <div class="bg-white rounded-xl shadow-md p-6 mb-8">
+            <h3 class="text-lg font-bold text-gray-800 mb-2 flex items-center">
+              <i class="fa fa-line-chart text-indigo-600 mr-2"></i> 阶段目标预测时间范围
+            </h3>
+            <p class="text-sm text-gray-500 mb-4">
+              设置学生端「阶段目标预测」的起止日期，系统按 <b>7 天</b> 为一个节点，预测下一个节点的成绩。
+            </p>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-bold text-gray-600 mb-1">开始日期</label>
+                <input type="date" id="predictionStartDateInput" class="w-full px-3 py-1.5 border rounded-lg text-sm">
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-gray-600 mb-1">结束日期</label>
+                <input type="date" id="predictionEndDateInput" class="w-full px-3 py-1.5 border rounded-lg text-sm">
+              </div>
+            </div>
+            <div class="mt-4">
+              <label class="block text-xs font-bold text-gray-600 mb-1">下一目标节点名称</label>
+              <input type="text" id="predictionNextNodeLabelInput" class="w-full px-3 py-1.5 border rounded-lg text-sm" placeholder="例如：期中考试" maxlength="20">
+            </div>
+            <div class="mt-4 flex justify-end">
+              <button id="savePredictionRangeBtn" class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/95 text-sm font-bold shadow-md"><i class="fa fa-save mr-1.5"></i>保存</button>
+            </div>
+        </div>
+
         <div class="bg-white rounded-xl shadow-md p-6 mb-8">
             <div class="mb-4 space-x-3">
               <select id="studentGradeFilter" class="ml-4 px-3 py-2 border rounded-lg text-sm"><option value="all">全部活跃学生</option><option value="高一">高一</option><option value="高二">高二</option><option value="高三">高三</option><option value="archived">已归档老生</option></select>
@@ -967,6 +994,8 @@
     let g_records = [];
     let g_map = {};
     let g_formula = {}
+    let g_predictionRange = {}
+    let g_predictionNextNodeLabel = '预测'
     async function init() {
        if (localStorage.getItem(ADMIN_SESSION_KEY) === 'true') { 
         showMainContent(); 
@@ -1027,12 +1056,16 @@
           cDuration: 10,
           cQuestions: 200
         }),
+        fetch(`/api/v1/config/predictionTimeRange`).then(r => r.json()).then(res => res || { startDate: '', endDate: '' }),
+        fetch(`/api/v1/config/predictionNextNodeLabel`).then(r => r.json()).then(res => typeof res === 'string' ? res : ''),
       ]).then(res => {
         g_papers = res[0]
         g_records = res[1]
         g_categories = res[2]
         g_map = res[3]
         g_formula = res[4]
+        g_predictionRange = res[5]
+        g_predictionNextNodeLabel = res[6] || '预测'
 
         generateAnswerSelects();
       
@@ -4988,8 +5021,42 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
       });
     }
 
+    async function initPredictionRangeSection() {
+      const startInput = document.getElementById('predictionStartDateInput');
+      const endInput = document.getElementById('predictionEndDateInput');
+      const labelInput = document.getElementById('predictionNextNodeLabelInput');
+      const saveBtn = document.getElementById('savePredictionRangeBtn');
+      if (!startInput || !endInput || !saveBtn) return;
+
+      startInput.value = g_predictionRange.startDate || '';
+      endInput.value = g_predictionRange.endDate || '';
+      if (labelInput) labelInput.value = g_predictionNextNodeLabel || '预测';
+
+      saveBtn.addEventListener('click', async () => {
+        const startDate = startInput.value;
+        const endDate = endInput.value;
+        if (!startDate || !endDate) return alert('请选择开始日期和结束日期！');
+        if (startDate > endDate) return alert('开始日期不能晚于结束日期！');
+        const nextNodeLabel = labelInput ? (labelInput.value || '预测').trim() : '预测';
+        await fetch('/api/v1/config/predictionTimeRange', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value: { startDate, endDate } })
+        });
+        await fetch('/api/v1/config/predictionNextNodeLabel', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value: nextNodeLabel })
+        });
+        g_predictionRange = { startDate, endDate };
+        g_predictionNextNodeLabel = nextNodeLabel;
+        alert('预测配置保存成功！');
+      });
+    }
+
     function initStudentManagement() {
        initFormulaSection();
+       initPredictionRangeSection();
        loadStudentPointsList();
         exportStudentsBtn.addEventListener('click', exportStudentData); 
         addStudentBtn.addEventListener('click', openAddStudentModal); 

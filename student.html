@@ -110,6 +110,16 @@
             </div>
           </div>
         </div>
+        <div id="prediction-section" class="mt-4 pt-4 border-t hidden">
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="text-sm font-bold text-gray-700"><i class="fa fa-line-chart text-primary mr-1"></i>阶段目标预测</h4>
+            <span id="prediction-summary" class="text-xs font-bold text-indigo-600"></span>
+          </div>
+          <div class="relative" style="height: 220px;">
+            <canvas id="predictionChart"></canvas>
+          </div>
+          <p id="prediction-empty" class="hidden text-center text-xs text-gray-400 py-8"><i class="fa fa-inbox mr-1"></i>暂无阶段预测数据</p>
+        </div>
       </div>
     <div id="stats-dashboard" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8 hidden fade-in"><div id="statPapersCard" class="bg-white rounded-xl shadow-md p-4 flex items-center justify-between transition-transform hover:scale-105 hover:shadow-lg duration-200 cursor-pointer border border-blue-200 hover:border-blue-400 relative group"><div class="absolute -top-2 -right-2 bg-blue-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm"><i class="fa fa-hand-pointer-o mr-1"></i>点击查看</div><div><p class="text-sm text-gray-500 font-medium flex items-center">已做任务<i class="fa fa-angle-right ml-1 text-blue-500"></i></p><p class="text-3xl font-bold text-gray-800 mt-1" id="stat-papers">0</p></div><div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-500 text-xl shadow-sm group-hover:bg-blue-200 transition-colors"><i class="fa fa-book"></i></div></div><div class="bg-white rounded-xl shadow-md p-4 flex items-center justify-between transition-transform hover:scale-105 duration-200"><div><p class="text-sm text-gray-500 font-medium">做题总数</p><p class="text-3xl font-bold text-indigo-600 mt-1" id="stat-total-questions">0</p><p class="text-xs text-indigo-500 mt-1 font-medium" id="stat-total-questions-rank">排名：暂无</p></div><div class="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-500 text-xl shadow-sm"><i class="fa fa-pencil"></i></div></div><div id="statWrongQuestionsCard" class="bg-white rounded-xl shadow-md p-4 flex items-center justify-between transition-transform hover:scale-105 hover:shadow-lg duration-200 cursor-pointer border border-red-200 hover:border-red-400 relative group"><div class="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm"><i class="fa fa-hand-pointer-o mr-1"></i>点击查看</div><div><p class="text-sm text-gray-500 font-medium flex items-center">累计错题<i class="fa fa-angle-right ml-1 text-red-500"></i></p><p class="text-3xl font-bold text-red-500 mt-1" id="stat-wrong-questions">0</p></div><div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center text-red-500 text-xl shadow-sm group-hover:bg-red-200 transition-colors"><i class="fa fa-times-circle"></i></div></div><div class="bg-white rounded-xl shadow-md p-4 flex items-center justify-between transition-transform hover:scale-105 duration-200"><div><p class="text-sm text-gray-500 font-medium">正确率</p><p class="text-3xl font-bold text-green-600 mt-1" id="stat-accuracy">0%</p><p class="text-xs text-green-600 mt-1 font-medium" id="stat-accuracy-rank">排名：暂无</p></div><div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center text-green-500 text-xl shadow-sm"><i class="fa fa-pie-chart"></i></div></div><div class="bg-white rounded-xl shadow-md p-4 flex items-center justify-between transition-transform hover:scale-105 duration-200"><div><p class="text-sm text-gray-500 font-medium">学习时长</p><p class="text-2xl font-bold text-violet-600 mt-1" id="stat-learning-time">0分钟</p><p class="text-xs text-violet-500 mt-1 font-medium" id="stat-learning-time-rank">排名：暂无</p></div><div class="w-12 h-12 bg-violet-100 rounded-full flex items-center justify-center text-violet-500 text-xl shadow-sm"><i class="fa fa-clock-o"></i></div></div></div>
     
@@ -474,6 +484,7 @@
     const learningCustomSection = studentCategorySection, selfLearningContentList = null, customPaperList = null;
     const selfLearningModal = document.getElementById('selfLearningModal'), selfLearningModalContent = document.getElementById('selfLearningModalContent'), selfLearningModalTitle = document.getElementById('selfLearningModalTitle'), selfLearningModalSummary = document.getElementById('selfLearningModalSummary'), selfLearningVideoPlayer = document.getElementById('selfLearningVideoPlayer'), selfLearningDanmuLayer = document.getElementById('selfLearningDanmuLayer'), selfLearningLikeBtn = document.getElementById('selfLearningLikeBtn'), selfLearningLikeText = document.getElementById('selfLearningLikeText'), selfLearningLikeCount = document.getElementById('selfLearningLikeCount'), selfLearningDanmuCount = document.getElementById('selfLearningDanmuCount'), selfLearningCommentCount = document.getElementById('selfLearningCommentCount'), selfLearningDanmuInput = document.getElementById('selfLearningDanmuInput'), selfLearningSendDanmuBtn = document.getElementById('selfLearningSendDanmuBtn'), selfLearningCommentInput = document.getElementById('selfLearningCommentInput'), selfLearningSendCommentBtn = document.getElementById('selfLearningSendCommentBtn'), selfLearningCommentList = document.getElementById('selfLearningCommentList'), selfLearningPaperLabel = document.getElementById('selfLearningPaperLabel'), startSelfLearningPaperBtn = document.getElementById('startSelfLearningPaperBtn'), closeSelfLearningModalBtn = document.getElementById('closeSelfLearningModalBtn');
     const growthTrendCard = null, growthQuestionChart = null, growthAccuracyChart = null, growthPeriodButtons = [];
+    let predictionChartInst = null;
     const noExchangeHint = document.createElement('div'); noExchangeHint.className = 'text-center text-gray-500 py-6'; noExchangeHint.innerHTML = '<i class="fa fa-inbox text-3xl mb-2"></i><p>暂无兑换记录</p>';
     const editPrizesBtn = document.getElementById('edit-prizes-btn'), prizeEditForm = document.getElementById('prize-edit-form'), cancelEditPrize = document.getElementById('cancel-edit-prize'), savePrize = document.getElementById('save-prize'), prizesContainer = document.getElementById('prizes-container');
     // const grade1PaperList = document.getElementById('grade1PaperList'), grade2PaperList = document.getElementById('grade2PaperList'), grade3PaperList = document.getElementById('grade3PaperList'), grade1PaperCount = document.getElementById('grade1PaperCount'), grade2PaperCount = document.getElementById('grade2PaperCount'), grade3PaperCount = document.getElementById('grade3PaperCount');
@@ -651,7 +662,8 @@
           calculateUserRank();
 
           document.getElementById('login-card').classList.add('hidden');
-          userPointsCard.classList.remove('hidden'); 
+          userPointsCard.classList.remove('hidden');
+          renderPhasePrediction();
           exchangeHistory.classList.remove('hidden');
           document.getElementById('message-board-section').classList.remove('hidden'); 
           if (learningCustomSection) learningCustomSection.classList.remove('hidden'); 
@@ -686,7 +698,79 @@
           // showGeneralModal('登录成功', `欢迎 ${userName}（学号：${userId}），当前积分：${userPoints}分`, 'success'); 
           // updateLogoutButtonState();
    }
-   function switchTab(tabName) { 
+
+   async function renderPhasePrediction() {
+     if (!studentInfo || !studentInfo.id) return;
+     const section = document.getElementById('prediction-section');
+     const summaryEl = document.getElementById('prediction-summary');
+     const emptyEl = document.getElementById('prediction-empty');
+     if (!section) return;
+     section.classList.remove('hidden');
+
+     const data = await fetchJson(`/api/v1/prediction/phase-target/${studentInfo.id}`);
+
+     if (!data || data.configured === false) {
+       emptyEl.classList.remove('hidden');
+       emptyEl.innerHTML = '<i class="fa fa-cog mr-1"></i>管理员尚未配置预测时间范围';
+       summaryEl.textContent = '';
+       return;
+     }
+     if (!data.nodes || data.nodes.length === 0) {
+       emptyEl.classList.remove('hidden');
+       emptyEl.innerHTML = '<i class="fa fa-inbox mr-1"></i>该阶段暂无答题记录';
+       summaryEl.textContent = '';
+       return;
+     }
+
+     emptyEl.classList.add('hidden');
+     const trendText = data.trend === 'up' ? '↑ 上升' : data.trend === 'down' ? '↓ 下降' : '→ 平稳';
+     const nextLabel = data.nextNodeLabel || '预测';
+     const rangeText = data.predictedScoreRange
+       ? `${data.predictedScoreRange.min} ~ ${data.predictedScoreRange.max}`
+       : String(data.predictedScore);
+     summaryEl.textContent = `预测下一节点（${nextLabel}）: ${rangeText} 分 · ${trendText}`;
+
+     if (predictionChartInst) predictionChartInst.destroy();
+
+     const labels = data.nodes.map(n => n.label);
+     const scores = data.nodes.map(n => n.score);
+
+     predictionChartInst = new Chart(document.getElementById('predictionChart'), {
+       type: 'line',
+       data: {
+         labels: [...labels, nextLabel],
+         datasets: [
+           {
+             label: '实际节点',
+             data: [...scores, null],
+             borderColor: '#4F46E5',
+             backgroundColor: 'rgba(79,70,229,0.1)',
+             fill: true,
+             tension: 0.3,
+             pointRadius: 4,
+             pointBackgroundColor: '#4F46E5'
+           },
+           {
+             label: nextLabel,
+             data: [...Array(Math.max(0, scores.length - 1)).fill(null), scores[scores.length - 1], data.predictedScore],
+             borderColor: '#F59E0B',
+             backgroundColor: 'rgba(245,158,11,0.15)',
+             borderDash: [6, 4],
+             pointRadius: [...Array(scores.length).fill(0), 6],
+             pointBackgroundColor: '#F59E0B'
+           }
+         ]
+       },
+       options: {
+         responsive: true,
+         maintainAspectRatio: false,
+         plugins: { legend: { display: false } },
+         scales: { y: { min: 0, max: 150, title: { display: true, text: '阶段目标分' } } }
+       }
+     });
+   }
+
+   function switchTab(tabName) {
         currentModuleTab = tabName; 
         const buttons = document.querySelectorAll('#module-tabs button'); 
         buttons.forEach(btn => { 
