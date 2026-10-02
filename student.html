@@ -14,6 +14,15 @@
     tailwind.config = { theme: { extend: { colors: { primary: '#4F46E5', secondary: '#10B981', accent: '#F59E0B', dark: '#1F2937', sky: { 50: '#F0F9FF', 100: '#E0F2FE' } } } } }
   </script>
   <style>
+    :root {
+    --bg: #0a1626;
+    --fg: #eaf4fb;
+    --card: #10223a;
+    --primary: #3ee6e0;
+    --accent: #ffd84a;
+    --muted: #8ea6bd;
+    --border: rgba(62, 230, 224, 0.22);
+  }
     .fade-in { animation: fadeIn 0.3s ease-in-out; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     .answer-card { background-color: #f8fafc; border-radius: 12px; }
@@ -32,6 +41,28 @@
     .category-chevron-icon { transition: transform 0.2s ease; display: inline-block; }
     .category-chevron-icon.rotated { transform: rotate(-90deg); }
 
+    .chart_card {
+      background: linear-gradient(180deg, rgba(22, 48, 75, 0.7), rgba(16, 34, 58, 0.7));
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 10px 30px rgba(0,0,0,0.3);
+    }
+    .forecast { margin-top: 10px;color: #eaf4fb;padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+    .forecast .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .forecast .stat {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: rgba(10, 22, 38, 0.45);
+      box-shadow: inset 0 -2px 0 rgba(62, 230, 224, 0.5);
+    }
+    .forecast .stat-label { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; }
+    .forecast .stat-label svg { width: 18px; height: 18px; color: var(--primary); flex-shrink: 0; }
+    .forecast .stat-value { text-align: center; white-space: nowrap; font-size: clamp(28px, 9vw, 40px); font-weight: 900; line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .forecast .stat-value small { font-size: 14px; font-weight: 400; color: var(--muted); margin-left: 4px; }
     /* prediction-section 样式参考 demo.html */
     .prediction-card {
       background: linear-gradient(180deg, rgba(22, 48, 75, 0.88), rgba(16, 34, 58, 0.95));
@@ -52,7 +83,7 @@
     .prediction-badge {
       color: #ffd84a;
       font-weight: 700;
-      font-size: 12px;
+      font-size: 16px;
       padding: 5px 12px;
       border-radius: 999px;
       border: 1.5px solid #3ee6e0;
@@ -138,12 +169,12 @@
           </div>
         </div>
         <div class="mt-4 pt-4 border-t">
-          <p class="text-gray-600 mt-1 mb-1">当前称号: 
+          <p class="text-gray-600 mt-1 mb-1" style="display: none;">当前称号: 
             <span id="currentRankSpan" class="text-sm text-gray-500 mr-5" style="font-size: 18px;"></span> 
             距离: 
             <span id="nextRankSpan" class="text-sm text-gray-500" style="font-size: 18px;"></span> 
           </p>
-          <div class="flex items-center">
+          <div class="flex items-center" style="display: none;">
             <div class="w-full bg-gray-200 rounded-full h-2.5">
               <div id="points-progress" class="bg-accent h-2.5 rounded-full" style="width: 0%"></div>
             </div>
@@ -157,6 +188,26 @@
           <figure id="predictionChart" class="prediction-figure"></figure>
           <p id="prediction-empty" class="prediction-empty hidden"><i class="fa fa-inbox mr-1"></i>暂无阶段预测数据</p>
         </div>
+        
+        <section class="chart_card forecast" aria-label="预测结果">
+          <div class="stats">
+            <div class="stat">
+              <span class="stat-label">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 2h6v4H9z"/><path d="M9 12h6M9 16h4"/></svg>
+                <span id="prediction-label"></span>
+              </span>
+              <p class="stat-value"><span id="prediction-value"></span><small>分</small></p>
+            </div>
+            <div class="stat">
+              <span class="stat-label">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 2h6v4H9z"/><path d="M9 11h6M9 14h6M9 17h4"/></svg>
+                预计范围
+              </span>
+              <p class="stat-value"><span id="prediction-range"></span><small>分</small></p>
+            </div>
+          </div>
+        </section>
+
       </div>
     <div id="stats-dashboard" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8 hidden fade-in"><div id="statPapersCard" class="bg-white rounded-xl shadow-md p-4 flex items-center justify-between transition-transform hover:scale-105 hover:shadow-lg duration-200 cursor-pointer border border-blue-200 hover:border-blue-400 relative group"><div class="absolute -top-2 -right-2 bg-blue-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm"><i class="fa fa-hand-pointer-o mr-1"></i>点击查看</div><div><p class="text-sm text-gray-500 font-medium flex items-center">已做任务<i class="fa fa-angle-right ml-1 text-blue-500"></i></p><p class="text-3xl font-bold text-gray-800 mt-1" id="stat-papers">0</p></div><div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-500 text-xl shadow-sm group-hover:bg-blue-200 transition-colors"><i class="fa fa-book"></i></div></div><div class="bg-white rounded-xl shadow-md p-4 flex items-center justify-between transition-transform hover:scale-105 duration-200"><div><p class="text-sm text-gray-500 font-medium">做题总数</p><p class="text-3xl font-bold text-indigo-600 mt-1" id="stat-total-questions">0</p><p class="text-xs text-indigo-500 mt-1 font-medium" id="stat-total-questions-rank">排名：暂无</p></div><div class="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-500 text-xl shadow-sm"><i class="fa fa-pencil"></i></div></div><div id="statWrongQuestionsCard" class="bg-white rounded-xl shadow-md p-4 flex items-center justify-between transition-transform hover:scale-105 hover:shadow-lg duration-200 cursor-pointer border border-red-200 hover:border-red-400 relative group"><div class="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm"><i class="fa fa-hand-pointer-o mr-1"></i>点击查看</div><div><p class="text-sm text-gray-500 font-medium flex items-center">累计错题<i class="fa fa-angle-right ml-1 text-red-500"></i></p><p class="text-3xl font-bold text-red-500 mt-1" id="stat-wrong-questions">0</p></div><div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center text-red-500 text-xl shadow-sm group-hover:bg-red-200 transition-colors"><i class="fa fa-times-circle"></i></div></div><div class="bg-white rounded-xl shadow-md p-4 flex items-center justify-between transition-transform hover:scale-105 duration-200"><div><p class="text-sm text-gray-500 font-medium">正确率</p><p class="text-3xl font-bold text-green-600 mt-1" id="stat-accuracy">0%</p><p class="text-xs text-green-600 mt-1 font-medium" id="stat-accuracy-rank">排名：暂无</p></div><div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center text-green-500 text-xl shadow-sm"><i class="fa fa-pie-chart"></i></div></div><div class="bg-white rounded-xl shadow-md p-4 flex items-center justify-between transition-transform hover:scale-105 duration-200"><div><p class="text-sm text-gray-500 font-medium">学习时长</p><p class="text-2xl font-bold text-violet-600 mt-1" id="stat-learning-time">0分钟</p><p class="text-xs text-violet-500 mt-1 font-medium" id="stat-learning-time-rank">排名：暂无</p></div><div class="w-12 h-12 bg-violet-100 rounded-full flex items-center justify-center text-violet-500 text-xl shadow-sm"><i class="fa fa-clock-o"></i></div></div></div>
     
@@ -741,6 +792,9 @@
      if (!studentInfo || !studentInfo.id) return;
      const section = document.getElementById('prediction-section');
      const summaryEl = document.getElementById('prediction-summary');
+     const predictionLabel = document.getElementById('prediction-label');
+     const predictionValue = document.getElementById('prediction-value');
+     const predictionRange = document.getElementById('prediction-range');
      const emptyEl = document.getElementById('prediction-empty');
      const chartEl = document.getElementById('predictionChart');
      if (!section || !chartEl) return;
@@ -753,6 +807,9 @@
        emptyEl.classList.remove('hidden');
        emptyEl.innerHTML = '<i class="fa fa-cog mr-1"></i>管理员尚未配置预测时间范围';
        summaryEl.textContent = '';
+       predictionLabel.textContent = '';
+       predictionValue.textContent = '';
+       predictionRange.textContent = '';
        chartEl.innerHTML = '';
        return;
      }
@@ -760,18 +817,24 @@
        emptyEl.classList.remove('hidden');
        emptyEl.innerHTML = '<i class="fa fa-inbox mr-1"></i>该阶段暂无答题记录';
        summaryEl.textContent = '';
+       predictionLabel.textContent = '';
+       predictionValue.textContent = '';
+       predictionRange.textContent = '';
        chartEl.innerHTML = '';
        return;
      }
 
      emptyEl.classList.add('hidden');
-     const trendText = data.trend === 'up' ? '↑ 上升' : data.trend === 'down' ? '↓ 下降' : '→ 平稳';
+     const trendText = data.trend === 'up' ? '↑ 稳步上升' : data.trend === 'down' ? '↓ 逐步下降' : '→ 发挥平稳';
      const nextLabel = data.nextNodeLabel || '预测';
      const rangeText = data.predictedScoreRange
        ? `${data.predictedScoreRange.min} ~ ${data.predictedScoreRange.max}`
        : String(data.predictedScore);
-     summaryEl.textContent = `预测下一节点（${nextLabel}）: ${rangeText} 分 · ${trendText}`;
-
+     summaryEl.textContent = `${trendText}`;
+     predictionLabel.textContent = `${nextLabel}预计`;
+     predictionValue.textContent = `${data.predictedScore}`;
+     predictionRange.textContent = `${rangeText}`;
+     
      const rect = chartEl.getBoundingClientRect();
      chartEl.innerHTML = buildPredictionChart(data.nodes, data.predictedScore, data.predictedScoreRange, nextLabel, Math.round(rect.width), Math.round(rect.height));
    }
