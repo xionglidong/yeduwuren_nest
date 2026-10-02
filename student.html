@@ -825,7 +825,7 @@
      }
 
      emptyEl.classList.add('hidden');
-     const trendText = data.trend === 'up' ? '↑ 稳步上升' : data.trend === 'down' ? '↓ 逐步下降' : '→ 发挥平稳';
+     const trendText = data.trend === 'up' ? '↑ 稳步上升' : data.trend === 'down' ? '↓预测下降' : '→ 发挥平稳';
      const nextLabel = data.nextNodeLabel || '预测';
      const rangeText = data.predictedScoreRange
        ? `${data.predictedScoreRange.min} ~ ${data.predictedScoreRange.max}`
