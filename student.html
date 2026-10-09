@@ -62,7 +62,7 @@
     .forecast .stat-label { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; }
     .forecast .stat-label svg { width: 18px; height: 18px; color: var(--primary); flex-shrink: 0; }
     .forecast .stat-value { text-align: center; white-space: nowrap; font-size: clamp(28px, 9vw, 40px); font-weight: 900; line-height: 1.1; font-variant-numeric: tabular-nums; }
-    .forecast .stat-value small { font-size: 14px; font-weight: 400; color: var(--muted); margin-left: 4px; }
+    .forecast .stat-value small { font-size: 14px; font-weight: 400; color: var(--muted); margin-left: 4px; color: white;}
     /* prediction-section 样式参考 demo.html */
     .prediction-card {
       background: linear-gradient(180deg, rgba(22, 48, 75, 0.88), rgba(16, 34, 58, 0.95));
@@ -198,14 +198,14 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 2h6v4H9z"/><path d="M9 12h6M9 16h4"/></svg>
                 <span id="prediction-label"></span>
               </span>
-              <p class="stat-value"><span id="prediction-value"></span><small>分</small></p>
+              <p class="stat-value"><span id="prediction-value"></span><small>±2分</small></p>
             </div>
             <div class="stat">
               <span class="stat-label">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 2h6v4H9z"/><path d="M9 11h6M9 14h6M9 17h4"/></svg>
-                预计范围
+                预计成功率
               </span>
-              <p class="stat-value"><span id="prediction-range"></span><small>分</small></p>
+              <p class="stat-value"><span id="prediction-range"></span></p>
             </div>
           </div>
         </section>
@@ -829,13 +829,13 @@
      emptyEl.classList.add('hidden');
      const trendText = data.trend === 'up' ? '↑ 稳步上升' : data.trend === 'down' ? '↓预测下降' : '→ 发挥平稳';
      const nextLabel = data.nextNodeLabel || '预测';
-     const rangeText = data.predictedScoreRange
-       ? `${data.predictedScoreRange.min} ~ ${data.predictedScoreRange.max}`
-       : String(data.predictedScore);
+    //  const rangeText = data.predictedScoreRange
+    //    ? `${data.predictedScoreRange.min} ~ ${data.predictedScoreRange.max}`
+    //    : String(data.predictedScore);
      summaryEl.textContent = `${trendText}`;
      predictionLabel.textContent = `${nextLabel}预计`;
      predictionValue.textContent = `${data.predictedScore}`;
-     predictionRange.textContent = `${rangeText}`;
+     predictionRange.textContent = `${data.confidence || 1}%`;
      
      const rect = chartEl.getBoundingClientRect();
      chartEl.innerHTML = buildPredictionChart(data.nodes, data.predictedScore, data.predictedScoreRange, nextLabel, Math.round(rect.width), Math.round(rect.height));

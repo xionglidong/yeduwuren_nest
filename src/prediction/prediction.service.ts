@@ -31,6 +31,7 @@ export interface PhaseTargetPrediction {
   nodes: PredictionNode[];
   predictedScore: number | null;
   predictedScoreRange: PredictedScoreRange | null;
+  confidence: number; // 1..99, 预测成功率（%），受作答次数与作答间隔影响
   nextNodeLabel: string;
   trend: 'up' | 'down' | 'flat';
   slope: number;
@@ -110,6 +111,7 @@ export class PredictionService {
         nodes: [],
         predictedScore: null,
         predictedScoreRange: null,
+        confidence: 1,
         nextNodeLabel,
         trend: 'flat',
         slope: 0,
@@ -310,6 +312,7 @@ export class PredictionService {
         nodes: [],
         predictedScore: null,
         predictedScoreRange: null,
+        confidence: 1,
         nextNodeLabel,
         trend: 'flat',
         slope: 0,
@@ -326,6 +329,7 @@ export class PredictionService {
         nodes,
         predictedScore,
         predictedScoreRange: this.buildScoreRange(predictedScore),
+        confidence: this.computeConfidence(submissions),
         nextNodeLabel,
         trend: 'flat',
         slope: 0,
@@ -355,6 +359,7 @@ export class PredictionService {
       nodes,
       predictedScore,
       predictedScoreRange: this.buildScoreRange(predictedScore),
+      confidence: this.computeConfidence(submissions),
       nextNodeLabel,
       trend,
       slope: Number(slope.toFixed(4)),
@@ -366,6 +371,61 @@ export class PredictionService {
       min: this.clamp(Math.round(score - 2), 0, MAX_SCORE),
       max: this.clamp(Math.round(score + 2), 0, MAX_SCORE),
     };
+  }
+
+  /**
+   * 计算预测成功率（1-99 的整数）。
+   * 受两个因素影响：
+   * 1. 作答次数：次数越多，样本越充足，成功率越高。
+   * 2. 作答间隔规律性：间隔越稳定、时间跨度越合理，成功率越高；
+   *    若作答过于集中或间隔波动极大，成功率会被压低。
+   */
+  private computeConfidence(
+    submissions: { submitTime?: string | Date | null }[],
+  ): number {
+    const total = submissions.length;
+    if (total === 0) return 1;
+
+    // 1. 基础成功率：随作答次数对数增长
+    const base = Math.min(95, Math.round(25 + 20 * Math.log2(total)));
+
+    const times = submissions
+      .map((s) => new Date(String(s.submitTime || '').replace(/-/g, '/')).getTime())
+      .filter((t) => !isNaN(t))
+      .sort((a, b) => a - b);
+
+    if (times.length < 2) {
+      return this.clamp(base, 1, 99);
+    }
+
+    // 2. 作答间隔规律性（变异系数 CV）
+    const intervals: number[] = [];
+    for (let i = 1; i < times.length; i++) {
+      intervals.push((times[i] - times[i - 1]) / DAY_MS);
+    }
+    const mean = intervals.reduce((sum, v) => sum + v, 0) / intervals.length;
+
+    let regularityDelta = 0;
+    if (mean <= 0) {
+      // 所有作答时间完全相同，视为极不规律
+      regularityDelta = -20;
+    } else {
+      const variance = intervals.reduce((sum, v) => sum + (v - mean) ** 2, 0) / intervals.length;
+      const cv = Math.sqrt(variance) / mean;
+      if (cv < 0.3) regularityDelta = 10;
+      else if (cv < 0.6) regularityDelta = 5;
+      else if (cv < 1.0) regularityDelta = 0;
+      else if (cv < 1.5) regularityDelta = -10;
+      else regularityDelta = -15;
+    }
+
+    // 3. 时间跨度：过于集中（<1 天）降低信心，跨度合理（>=14 天）略增信心
+    const spanDays = (times[times.length - 1] - times[0]) / DAY_MS;
+    let spanDelta = 0;
+    if (spanDays < 1) spanDelta = -10;
+    else if (spanDays >= 14) spanDelta = 5;
+
+    return this.clamp(base + regularityDelta + spanDelta, 1, 99);
   }
 
   private extractTags(tags: Record<string, unknown>): {
