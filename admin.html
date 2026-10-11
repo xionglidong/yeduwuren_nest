@@ -100,6 +100,15 @@
     .result-correct { background-color: #e6ffed; color: #10b981; border-left: 3px solid #10b981; }
     .result-incorrect { background-color: #fee2e2; color: #ef4444; border-left: 3px solid #ef4444; }
     .result-partial { background-color: #fef3c7; color: #d97706; border-left: 3px solid #d97706; }
+    /* Teaching log */
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #c7d2fe; border-radius: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #818cf8; }
+    input[type="time"] { position: relative; }
+    input[type="time"]::-webkit-calendar-picker-indicator { cursor: pointer; opacity: 0.6; transition: 0.2s; background-size: contain; }
+    input[type="time"]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+    .teach-tag-safelist { display: none; }
   </style>
 </head>
 
@@ -148,6 +157,7 @@
         <button data-tab="paper" class="py-2 px-4 text-gray-600 hover:text-primary tab-active"><i class="fa fa-pencil-square-o mr-1"></i> 题库 & 答题统计</button>
         <button data-tab="archived" class="py-2 px-4 text-gray-600 hover:text-primary"><i class="fa fa-archive mr-1"></i> 归档套题</button>
         <button data-tab="student" class="py-2 px-4 text-gray-600 hover:text-primary"><i class="fa fa-users mr-1"></i> 学生管理</button>
+        <button data-tab="teach" class="py-2 px-4 text-gray-600 hover:text-primary"><i class="fa fa-users mr-1"></i> 授课日志</button>
         <button data-tab="rank" class="py-2 px-4 text-gray-600 hover:text-primary"><i class="fa fa-trophy mr-1"></i> 排行榜 & 兑换记录</button>
         <button data-tab="forum" class="py-2 px-4 text-gray-600 hover:text-primary"><i class="fa fa-comments mr-1"></i> 交流广场</button>
       </div>
@@ -596,6 +606,91 @@
         </div>
       </div>
 
+     <div id="teach" class="tab-pane hidden fade-in">
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <div class="xl:col-span-1">
+            <div class="bg-white rounded-xl shadow-md border border-gray-200 p-6 sticky top-8">
+              <h2 class="text-xl font-bold text-indigo-600 flex items-center mb-6" id="teachFormTitle"><i class="fa fa-pencil-square-o mr-2"></i>录入本次授课</h2>
+              <div class="space-y-4">
+                <div>
+                  <label class="block text-sm font-bold text-gray-700 mb-1">学生姓名 / 班级</label>
+                  <input type="text" id="logStudent" placeholder="例如: 张三 或 高一(3)班" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none transition">
+                </div>
+                <div>
+                  <label class="block text-sm font-bold text-gray-700 mb-1">上课日期</label>
+                  <input type="date" id="logDate" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none transition">
+                </div>
+                <div>
+                  <label class="block text-sm font-bold text-gray-700 mb-1">上课时间段</label>
+                  <div class="flex items-center space-x-2 bg-white border border-gray-300 rounded-lg focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-indigo-500 overflow-hidden px-2 transition">
+                    <input type="time" id="logStartTime" class="flex-grow py-2.5 outline-none bg-transparent font-medium text-gray-700">
+                    <span class="text-gray-400 text-sm font-bold">至</span>
+                    <input type="time" id="logEndTime" class="flex-grow py-2.5 outline-none bg-transparent font-medium text-gray-700 text-right">
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-sm font-bold text-gray-700 mb-1">关联课后套卷 (选填)</label>
+                  <select id="logPaper" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none transition bg-white text-sm">
+                    <option value="">-- 未布置套卷 --</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-bold text-gray-700 mb-1 flex justify-between"><span>授课内容</span></label>
+                  <div class="text-[11px] text-indigo-500 mb-1 bg-indigo-50 p-2 rounded border border-indigo-100 flex items-start">
+                    <i class="fa fa-lightbulb-o mt-0.5 mr-1.5 text-indigo-400"></i>
+                    <span>魔法标签：输入带 <b>#</b> 号的词语（如 <b>#二次函数</b> ），系统会自动将其变为彩色知识点标签！</span>
+                  </div>
+                  <textarea id="logContent" rows="6" placeholder="例如：今天给张三复习了 #三角函数 的公式，重点突破了 #解三角形..." class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none transition custom-scrollbar resize-none leading-relaxed text-[15px]"></textarea>
+                </div>
+                <div class="flex gap-3 mt-4">
+                  <button onclick="saveLog()" id="saveBtn" class="flex-grow py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-md hover:shadow-lg transition transform hover:-translate-y-0.5 flex items-center justify-center">
+                    <i class="fa fa-save mr-2 text-lg"></i> <span id="saveBtnText">保存并生成记录</span>
+                  </button>
+                  <button onclick="cancelEdit()" id="cancelEditBtn" class="hidden px-5 py-3.5 bg-gray-100 border border-gray-300 hover:bg-gray-200 text-gray-600 font-bold rounded-lg transition flex items-center justify-center">取消修改</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="xl:col-span-2">
+            <div class="bg-white rounded-xl shadow-md border border-gray-200 p-6 min-h-[70vh] flex flex-col">
+              <div class="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
+                <h2 class="text-2xl font-black text-gray-800 flex items-center tracking-wide"><i class="fa fa-calendar text-indigo-500 mr-3"></i>教学历程记录</h2>
+                <span class="text-sm text-indigo-600 bg-indigo-50 px-4 py-1.5 rounded-full font-bold border border-indigo-100" id="logCount">加载中...</span>
+              </div>
+              <div id="logListContainer" class="flex-grow space-y-8 relative before:absolute before:inset-0 before:ml-[1.1rem] before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-indigo-200 before:via-indigo-100 before:to-transparent pb-10">
+                <div class="text-center py-20 text-gray-400 ml-8" id="loadingState">
+                  <i class="fa fa-spinner fa-spin text-4xl mb-3 text-indigo-500"></i>
+                  <p>正在同步数据库...</p>
+                </div>
+                <div class="text-center py-20 text-gray-400 hidden ml-8" id="emptyState">
+                  <div class="bg-gray-50 rounded-full w-24 h-24 flex items-center justify-center mx-auto mb-4 border-2 border-dashed border-gray-200">
+                    <i class="fa fa-inbox text-4xl opacity-40"></i>
+                  </div>
+                  <p class="font-bold text-gray-500">尚无授课记录</p>
+                  <p class="text-sm mt-1">在左侧录入第一堂课的内容吧</p>
+                </div>
+              </div>
+              <div id="paginationContainer" class="mt-6 pt-4 border-t border-gray-100 flex justify-center items-center space-x-2 hidden"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="teachStudentModal" class="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center hidden backdrop-blur-sm opacity-0 transition-opacity duration-300">
+          <div class="bg-white w-full max-w-3xl max-h-[85vh] rounded-2xl shadow-2xl flex flex-col transform scale-95 transition-transform duration-300 m-4" id="teachStudentModalContent">
+            <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 rounded-t-2xl">
+              <h3 class="text-xl font-black text-indigo-600 flex items-center"><i class="fa fa-address-book-o mr-3 text-2xl"></i><span id="teachModalStudentName">学生姓名</span> 的专属授课档案</h3>
+              <button onclick="closeTeachStudentModal()" class="text-gray-400 hover:text-red-500 transition-colors w-8 h-8 flex items-center justify-center rounded-full hover:bg-red-50"><i class="fa fa-times text-xl"></i></button>
+            </div>
+            <div class="p-6 overflow-y-auto custom-scrollbar flex-grow bg-slate-50/30" id="teachModalStudentLogs"></div>
+            <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl flex justify-between items-center">
+              <span class="text-sm font-bold text-gray-500" id="teachModalStudentCount">共 0 节课</span>
+              <button onclick="closeTeachStudentModal()" class="px-5 py-2 bg-white border border-gray-300 text-gray-700 font-bold rounded-lg hover:bg-gray-50 transition shadow-sm">关闭面板</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
      <div id="rank" class="tab-pane hidden fade-in">
         <div class="grid md:grid-cols-2 gap-6">
           <div class="bg-white rounded-xl shadow-md p-6"><h2 class="text-xl font-semibold mb-6 flex items-center"><i class="fa fa-trophy mr-2 text-yellow-500"></i> 排行榜</h2><div class="flex justify-end mb-4"><button id="exportRankingBtn" class="px-4 py-2 bg-secondary text-white rounded-lg"><i class="fa fa-download mr-2"></i> 导出</button></div><div class="max-h-[50vh] overflow-y-auto"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50 sticky top-0"><tr><th class="px-6 py-3 text-left text-xs font-medium text-gray-500">排名</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500">姓名 (学号)</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500">积分</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500">学习力</th></tr></thead><tbody id="rankingTableBody" class="bg-white divide-y divide-gray-200"></tbody></table></div></div>
@@ -841,6 +936,325 @@
       { wrap: 'bg-teal-100 text-teal-700 border-teal-200', close: 'text-teal-500 hover:bg-teal-200' },
       { wrap: 'bg-orange-100 text-orange-700 border-orange-200', close: 'text-orange-500 hover:bg-orange-200' }
     ];
+    let currentTeachPage = 1;
+    const TEACH_PAGE_SIZE = 8;
+    let editingLogId = null;
+    let teachLogsCache = [];
+
+    const TEACH_TAG_COLORS = [
+      'bg-blue-100 text-blue-700 border-blue-200', 'bg-emerald-100 text-emerald-700 border-emerald-200',
+      'bg-rose-100 text-rose-700 border-rose-200', 'bg-amber-100 text-amber-800 border-amber-300',
+      'bg-violet-100 text-violet-700 border-violet-200', 'bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200',
+      'bg-cyan-100 text-cyan-700 border-cyan-200', 'bg-orange-100 text-orange-700 border-orange-200',
+      'bg-indigo-100 text-indigo-700 border-indigo-200'
+    ];
+
+    function getTeachTagColorClass(tagStr) {
+      let hash = 0;
+      for (let i = 0; i < tagStr.length; i++) hash = tagStr.charCodeAt(i) + ((hash << 5) - hash);
+      return TEACH_TAG_COLORS[Math.abs(hash) % TEACH_TAG_COLORS.length];
+    }
+
+    function formatContentWithInlineTags(text) {
+      let safeText = escapeHtmlText(text);
+      const tagRegex = /#([^\s，。！？、,!?\(\)\[\]【】\n]+)/g;
+      safeText = safeText.replace(tagRegex, function(match, tagName) {
+        return `<span class="inline-flex items-center px-2 py-0.5 mx-0.5 rounded-md text-[13px] font-bold border ${getTeachTagColorClass(tagName)} shadow-[0_1px_2px_rgba(0,0,0,0.05)] align-baseline transition-transform hover:-translate-y-0.5 cursor-default"><i class="fa fa-hashtag opacity-40 mr-0.5 text-[11px]"></i>${tagName}</span>`;
+      });
+      return safeText.replace(/\n/g, '<br>');
+    }
+
+    function getPaperNameById(paperId) {
+      if (!paperId || !Array.isArray(g_papers)) return '';
+      const paper = g_papers.find(p => String(p.id) === String(paperId));
+      return paper ? paper.name : '';
+    }
+
+    function populateTeachPaperSelect(selectedId) {
+      const select = document.getElementById('logPaper');
+      if (!select) return;
+      select.innerHTML = '<option value="">-- 未布置套卷 --</option>';
+      const papers = Array.isArray(g_papers) ? g_papers : [];
+      papers.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.name || p.id;
+        if (selectedId && String(selectedId) === String(p.id)) opt.selected = true;
+        select.appendChild(opt);
+      });
+    }
+
+    function resetTeachForm() {
+      document.getElementById('logStudent').value = '';
+      document.getElementById('logDate').valueAsDate = new Date();
+      document.getElementById('logStartTime').value = '14:00';
+      document.getElementById('logEndTime').value = '16:00';
+      document.getElementById('logPaper').value = '';
+      document.getElementById('logContent').value = '';
+      editingLogId = null;
+      document.getElementById('saveBtnText').textContent = '保存并生成记录';
+      document.getElementById('teachFormTitle').innerHTML = '<i class="fa fa-pencil-square-o mr-2"></i>录入本次授课';
+      document.getElementById('cancelEditBtn').classList.add('hidden');
+    }
+
+    async function loadTeach() {
+      resetTeachForm();
+      populateTeachPaperSelect();
+      await loadTeachList(1);
+    }
+
+    async function loadTeachList(page = 1) {
+      currentTeachPage = page;
+      const container = document.getElementById('logListContainer');
+      const loading = document.getElementById('loadingState');
+      const empty = document.getElementById('emptyState');
+      const pagination = document.getElementById('paginationContainer');
+      const countBadge = document.getElementById('logCount');
+
+      loading.classList.remove('hidden');
+      empty.classList.add('hidden');
+      pagination.classList.add('hidden');
+      countBadge.textContent = '加载中...';
+
+      try {
+        const res = await fetch(`/api/v1/teaching-logs?page=${page}&pageSize=${TEACH_PAGE_SIZE}`);
+        const data = await res.json();
+        const list = data.list || [];
+        const total = data.total || 0;
+        teachLogsCache = list;
+
+        loading.classList.add('hidden');
+        countBadge.textContent = `共 ${total} 条记录`;
+
+        if (list.length === 0) {
+          container.innerHTML = loading.outerHTML + empty.outerHTML;
+          const newEmpty = document.getElementById('emptyState');
+          if (newEmpty) newEmpty.classList.remove('hidden');
+        } else {
+          renderTeachList(list);
+          renderTeachPagination(total, page, TEACH_PAGE_SIZE);
+        }
+      } catch (err) {
+        console.error('加载授课记录失败', err);
+        loading.classList.add('hidden');
+        container.innerHTML = loading.outerHTML + empty.outerHTML;
+        const newEmpty = document.getElementById('emptyState');
+        if (newEmpty) {
+          newEmpty.classList.remove('hidden');
+          const title = newEmpty.querySelector('p.font-bold');
+          const sub = newEmpty.querySelector('p.text-sm');
+          if (title) title.textContent = '加载失败';
+          if (sub) sub.textContent = '请检查网络或稍后重试';
+        }
+      }
+    }
+
+    function renderTeachList(logs) {
+      const container = document.getElementById('logListContainer');
+      const loading = document.getElementById('loadingState');
+      const empty = document.getElementById('emptyState');
+      loading.classList.add('hidden');
+      empty.classList.add('hidden');
+
+      const weekMap = ['日', '一', '二', '三', '四', '五', '六'];
+      const html = logs.map(log => {
+        const [y, m, d] = (log.logDate || '').split('-');
+        const dateStr = m && d ? `${m}月${d}日` : (log.logDate || '');
+        const week = log.logDate ? ` 周${weekMap[new Date(log.logDate.replace(/-/g, '/')).getDay()] || ''}` : '';
+        const paperName = getPaperNameById(log.paperId);
+        return `
+          <div class="relative pl-8 animate-fade-in group">
+            <div class="absolute left-2 top-1.5 w-4 h-4 rounded-full bg-indigo-500 ring-4 ring-white shadow-sm z-10"></div>
+            <div class="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition-shadow">
+              <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-3">
+                <div class="flex items-center gap-3 flex-wrap">
+                  <span class="text-lg font-black text-indigo-600">${dateStr}${week}</span>
+                  <button onclick="openStudentModal('${escapeHtmlText(log.studentName || '')}')" class="text-base font-bold text-gray-800 hover:text-indigo-600 transition-colors flex items-center">
+                    <i class="fa fa-user-circle-o mr-1.5 text-indigo-400"></i>${escapeHtmlText(log.studentName || '未命名')}
+                  </button>
+                </div>
+                <div class="flex items-center gap-2 text-sm text-gray-500">
+                  <i class="fa fa-clock-o text-indigo-400"></i>
+                  <span class="font-medium">${escapeHtmlText(log.startTime || '')} - ${escapeHtmlText(log.endTime || '')}</span>
+                </div>
+              </div>
+              ${paperName ? `<div class="mb-3 inline-flex items-center px-3 py-1 rounded-full bg-purple-50 text-purple-700 text-xs font-bold border border-purple-100"><i class="fa fa-file-text-o mr-1.5"></i>${escapeHtmlText(paperName)}</div>` : ''}
+              <div class="text-[15px] text-gray-700 leading-relaxed mb-4">${formatContentWithInlineTags(log.content || '')}</div>
+              <div class="flex justify-end gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
+                <button onclick="editLog('${log.id}')" class="px-3 py-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition"><i class="fa fa-pencil mr-1"></i>编辑</button>
+                <button onclick="deleteLog('${log.id}')" class="px-3 py-1.5 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition"><i class="fa fa-trash-o mr-1"></i>删除</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      container.innerHTML = html + container.querySelector('#loadingState')?.outerHTML || '' + container.querySelector('#emptyState')?.outerHTML || '';
+      // Ensure loading/empty states remain in DOM
+      if (!container.querySelector('#loadingState')) {
+        container.insertAdjacentHTML('beforeend', `<div class="text-center py-20 text-gray-400 ml-8 hidden" id="loadingState"><i class="fa fa-spinner fa-spin text-4xl mb-3 text-indigo-500"></i><p>正在同步数据库...</p></div>`);
+      }
+      if (!container.querySelector('#emptyState')) {
+        container.insertAdjacentHTML('beforeend', `<div class="text-center py-20 text-gray-400 hidden ml-8" id="emptyState"><div class="bg-gray-50 rounded-full w-24 h-24 flex items-center justify-center mx-auto mb-4 border-2 border-dashed border-gray-200"><i class="fa fa-inbox text-4xl opacity-40"></i></div><p class="font-bold text-gray-500">尚无授课记录</p><p class="text-sm mt-1">在左侧录入第一堂课的内容吧</p></div>`);
+      }
+    }
+
+    function renderTeachPagination(total, page, pageSize) {
+      const pagination = document.getElementById('paginationContainer');
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+      if (totalPages <= 1) {
+        pagination.classList.add('hidden');
+        return;
+      }
+
+      let pagesHtml = '';
+      for (let i = 1; i <= totalPages; i++) {
+        const active = i === page ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50';
+        pagesHtml += `<button onclick="loadTeachList(${i})" class="px-3 py-1.5 text-sm font-bold border rounded-lg transition ${active}">${i}</button>`;
+      }
+
+      pagination.innerHTML = `
+        <button onclick="loadTeachList(${page - 1})" ${page <= 1 ? 'disabled' : ''} class="px-3 py-1.5 text-sm font-bold border border-gray-300 rounded-lg bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"><i class="fa fa-chevron-left"></i></button>
+        ${pagesHtml}
+        <button onclick="loadTeachList(${page + 1})" ${page >= totalPages ? 'disabled' : ''} class="px-3 py-1.5 text-sm font-bold border border-gray-300 rounded-lg bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"><i class="fa fa-chevron-right"></i></button>
+      `;
+      pagination.classList.remove('hidden');
+    }
+
+    async function saveLog() {
+      const student = document.getElementById('logStudent').value.trim();
+      const logDate = document.getElementById('logDate').value;
+      const startTime = document.getElementById('logStartTime').value;
+      const endTime = document.getElementById('logEndTime').value;
+      const paperId = document.getElementById('logPaper').value;
+      const content = document.getElementById('logContent').value.trim();
+
+      if (!student) return alert('请输入学生姓名或班级');
+      if (!logDate) return alert('请选择上课日期');
+      if (!startTime || !endTime) return alert('请填写上课时间段');
+      if (!content) return alert('请输入授课内容');
+
+      const payload = {
+        studentName: student,
+        logDate,
+        startTime,
+        endTime,
+        paperId: paperId || undefined,
+        content,
+      };
+
+      try {
+        const url = editingLogId ? `/api/v1/teaching-logs/${editingLogId}` : '/api/v1/teaching-logs';
+        const method = editingLogId ? 'PUT' : 'POST';
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.message || '保存失败');
+        }
+        await res.json();
+        resetTeachForm();
+        await loadTeachList(1);
+      } catch (err) {
+        console.error('保存授课记录失败', err);
+        alert('保存失败：' + (err.message || '请稍后重试'));
+      }
+    }
+
+    function editLog(id) {
+      const log = teachLogsCache.find(item => item.id === id);
+      if (!log) return alert('未找到该记录');
+      document.getElementById('logStudent').value = log.studentName || '';
+      document.getElementById('logDate').value = log.logDate || '';
+      document.getElementById('logStartTime').value = log.startTime || '';
+      document.getElementById('logEndTime').value = log.endTime || '';
+      populateTeachPaperSelect(log.paperId);
+      document.getElementById('logContent').value = log.content || '';
+      editingLogId = log.id;
+      document.getElementById('saveBtnText').textContent = '保存修改';
+      document.getElementById('teachFormTitle').innerHTML = '<i class="fa fa-pencil-square-o mr-2"></i>修改授课记录';
+      document.getElementById('cancelEditBtn').classList.remove('hidden');
+      document.getElementById('logStudent').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function cancelEdit() {
+      resetTeachForm();
+    }
+
+    async function deleteLog(id) {
+      if (!confirm('确定要删除这条授课记录吗？')) return;
+      try {
+        const res = await fetch(`/api/v1/teaching-logs/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('删除失败');
+        await loadTeachList(currentTeachPage);
+      } catch (err) {
+        console.error('删除授课记录失败', err);
+        alert('删除失败，请稍后重试');
+      }
+    }
+
+    async function openStudentModal(name) {
+      if (!name) return;
+      const modal = document.getElementById('teachStudentModal');
+      const content = document.getElementById('teachStudentModalContent');
+      const logsContainer = document.getElementById('teachModalStudentLogs');
+      const nameEl = document.getElementById('teachModalStudentName');
+      const countEl = document.getElementById('teachModalStudentCount');
+
+      nameEl.textContent = name;
+      logsContainer.innerHTML = '<div class="text-center py-10 text-gray-400"><i class="fa fa-spinner fa-spin text-2xl mb-2 text-indigo-500"></i><p>加载中...</p></div>';
+      modal.classList.remove('hidden');
+      // Trigger reflow for transition
+      void modal.offsetWidth;
+      modal.classList.remove('opacity-0');
+      content.classList.remove('scale-95');
+      content.classList.add('scale-100');
+
+      try {
+        const res = await fetch(`/api/v1/teaching-logs/by-student/${encodeURIComponent(name)}`);
+        const logs = await res.json();
+        countEl.textContent = `共 ${logs.length} 节课`;
+        if (logs.length === 0) {
+          logsContainer.innerHTML = '<div class="text-center py-10 text-gray-400"><p>暂无授课记录</p></div>';
+          return;
+        }
+        const weekMap = ['日', '一', '二', '三', '四', '五', '六'];
+        logsContainer.innerHTML = logs.map(log => {
+          const [y, m, d] = (log.logDate || '').split('-');
+          const dateStr = m && d ? `${m}月${d}日` : (log.logDate || '');
+          const week = log.logDate ? ` 周${weekMap[new Date(log.logDate.replace(/-/g, '/')).getDay()] || ''}` : '';
+          const paperName = getPaperNameById(log.paperId);
+          return `
+            <div class="bg-white rounded-xl border border-gray-200 p-5 mb-4 shadow-sm">
+              <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-3">
+                <span class="text-base font-black text-indigo-600">${dateStr}${week}</span>
+                <span class="text-sm text-gray-500 font-medium"><i class="fa fa-clock-o text-indigo-400 mr-1"></i>${escapeHtmlText(log.startTime || '')} - ${escapeHtmlText(log.endTime || '')}</span>
+              </div>
+              ${paperName ? `<div class="mb-3 inline-flex items-center px-3 py-1 rounded-full bg-purple-50 text-purple-700 text-xs font-bold border border-purple-100"><i class="fa fa-file-text-o mr-1.5"></i>${escapeHtmlText(paperName)}</div>` : ''}
+              <div class="text-[15px] text-gray-700 leading-relaxed">${formatContentWithInlineTags(log.content || '')}</div>
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        console.error('加载学生授课档案失败', err);
+        logsContainer.innerHTML = '<div class="text-center py-10 text-red-500">加载失败，请稍后重试</div>';
+      }
+    }
+
+    function closeTeachStudentModal() {
+      const modal = document.getElementById('teachStudentModal');
+      const content = document.getElementById('teachStudentModalContent');
+      modal.classList.add('opacity-0');
+      content.classList.remove('scale-100');
+      content.classList.add('scale-95');
+      setTimeout(() => {
+        modal.classList.add('hidden');
+      }, 300);
+    }
+
     function normalizeAnswerTags(tags) {
       if (Array.isArray(tags)) return Array.from(new Set(tags.map((item) => String(item || '').trim()).filter(Boolean)));
       return Array.from(new Set(String(tags || '').split(/[，,]/).map((item) => String(item || '').trim()).filter(Boolean)));
@@ -1040,6 +1454,8 @@
             loadExchangeHistoryData(); 
         } else if (targetTabId === 'forum') { 
             loadAdminForum(); // 🚀 触发加载广场数据和删帖面板
+        } else if (targetTabId === 'teach') { 
+            loadTeach();
         } 
     }
     
@@ -6717,5 +7133,16 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
     })();
   </script>
 
+  <div class="teach-tag-safelist" aria-hidden="true">
+    <span class="bg-blue-100 text-blue-700 border-blue-200"></span>
+    <span class="bg-emerald-100 text-emerald-700 border-emerald-200"></span>
+    <span class="bg-rose-100 text-rose-700 border-rose-200"></span>
+    <span class="bg-amber-100 text-amber-800 border-amber-300"></span>
+    <span class="bg-violet-100 text-violet-700 border-violet-200"></span>
+    <span class="bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200"></span>
+    <span class="bg-cyan-100 text-cyan-700 border-cyan-200"></span>
+    <span class="bg-orange-100 text-orange-700 border-orange-200"></span>
+    <span class="bg-indigo-100 text-indigo-700 border-indigo-200"></span>
+  </div>
 </body>
 </html>

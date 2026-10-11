@@ -24,6 +24,7 @@ model Student {
   timerRecords    TimerRecord[]
   exchangeRecords ExchangeRecord[]
   forumPosts      ForumPost[]
+  teachingLogs    TeachingLog[]
 
   @@map("students")
 }
@@ -57,7 +58,8 @@ model Paper {
   createTime    String
   createdAt     DateTime       @default(now())
 
-  submissions StudentAnswer[]
+  submissions   StudentAnswer[]
+  teachingLogs  TeachingLog[]
 
   @@map("papers")
 }
@@ -168,6 +170,23 @@ model ForumResourceMaterial {
   createdAt  DateTime @default(now())
 
   @@map("forum_resource_materials")
+}
+
+model TeachingLog {
+  id          String   @id @default(cuid())
+  studentId   String?
+  student     Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  studentName String?
+  logDate     String
+  startTime   String
+  endTime     String
+  paperId     String?
+  paper       Paper?   @relation(fields: [paperId], references: [id], onDelete: SetNull)
+  content     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("teaching_logs")
 }
 
 model MetaConfig {

@@ -15,6 +15,7 @@ import { SelfLearningModule } from './self-learning/self-learning.module';
 import { ConfigStoreModule } from './config-store/config-store.module';
 import { ScreenshotModule } from './screenshot/screenshot.module';
 import { PredictionModule } from './prediction/prediction.module';
+import { TeachingLogModule } from './teaching-log/teaching-log.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { PredictionModule } from './prediction/prediction.module';
     SelfLearningModule,
     ScreenshotModule,
     PredictionModule,
+    TeachingLogModule,
   ],
 })
 export class AppModule {}
