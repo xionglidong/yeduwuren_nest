@@ -390,7 +390,7 @@
       return normalized.map((tag) => `<span class="tag-badge ${tagTheme(tag)}">${escapeHtmlText(tag)}</span>`).join('');
     }
     function paperTypeLabel(type) {
-      const map = { test: '课上测试', homework: '课后作业', correction: '整理错题', custom: '自定义题库' };
+      const map = { test: '课上测试', homework: '课后作业', correction: '整理错题', custom: '自定义题库', comprehensive: '综合考试' };
       return map[type] || '课上测试';
     }
     function renderImageList(containerId, images) {

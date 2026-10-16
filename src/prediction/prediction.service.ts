@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { ConfigStoreService } from '../config-store/config-store.service';
 import { PaperRepository } from '../paper/repositories/paper.repository';
+import { StudentRepository } from '../student/student.repository';
 
 export interface KnowledgePointScore {
   name: string;
@@ -23,6 +24,23 @@ export interface PredictedScoreRange {
   max: number;
 }
 
+export interface PredictionComposition {
+  test: number;
+  homework: number;
+  comprehensive: number;
+  custom: number;
+  correction: number;
+  schoolScore: number;
+  weights: {
+    comprehensive: number;
+    test: number;
+    custom: number;
+    homework: number;
+    schoolScore: number;
+    correctionBonus: number; // +10% = 0.1
+  };
+}
+
 export interface PhaseTargetPrediction {
   studentId: string;
   configured: boolean;
@@ -30,19 +48,25 @@ export interface PhaseTargetPrediction {
   nodeDays: number;
   nodes: PredictionNode[];
   predictedScore: number | null;
+  basePredictedScore: number | null;
+  correctionBonus: number;
   predictedScoreRange: PredictedScoreRange | null;
   confidence: number; // 1..99, 预测成功率（%），受作答次数与作答间隔影响
   nextNodeLabel: string;
   trend: 'up' | 'down' | 'flat';
   slope: number;
+  composition: PredictionComposition;
+  suggestions: string[];
   reason?: string; // 'no-config' | 'no-data'
 }
 
 const NODE_DAYS = 7;
 const BASE_SCORE = 150;
 const MAX_SCORE = 150;
+const COMPREHENSIVE_WEIGHT = 0.8;
 const IN_CLASS_WEIGHT = 0.6;
 const HOMEWORK_WEIGHT = 0.4;
+const SCHOOL_SCORE_WEIGHT = 0.8;
 const DIFFICULTY_COEFF: Record<string, number> = { 简单题: 0.85, 中档题: 1.0, 较难题: 1.2 };
 const TYPE_COEFF: Record<string, number> = { 新题: 1.0, 旧题: 0.9 };
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -59,10 +83,7 @@ interface ParsedPaper {
 interface NodeAgg {
   weightedCorrect: number;
   weightedTotal: number;
-  inClassCorrect: number;
-  inClassTotal: number;
-  homeworkCorrect: number;
-  homeworkTotal: number;
+  questionCount: number;
   diffSum: number;
   diffCount: number;
   typeSum: number;
@@ -74,6 +95,7 @@ export class PredictionService {
   constructor(
     private readonly paperRepository: PaperRepository,
     private readonly configStore: ConfigStoreService,
+    private readonly studentRepository: StudentRepository,
   ) {}
 
   async predictPhaseTarget(
@@ -110,11 +132,30 @@ export class PredictionService {
         nodeDays: NODE_DAYS,
         nodes: [],
         predictedScore: null,
+        basePredictedScore: null,
+        correctionBonus: 0,
         predictedScoreRange: null,
         confidence: 1,
         nextNodeLabel,
         trend: 'flat',
         slope: 0,
+        composition: {
+          test: 0,
+          homework: 0,
+          comprehensive: 0,
+          custom: 0,
+          correction: 0,
+          schoolScore: 0,
+          weights: {
+            comprehensive: COMPREHENSIVE_WEIGHT,
+            test: IN_CLASS_WEIGHT,
+            custom: IN_CLASS_WEIGHT,
+            homework: HOMEWORK_WEIGHT,
+            schoolScore: SCHOOL_SCORE_WEIGHT,
+            correctionBonus: 0.1,
+          },
+        },
+        suggestions: [],
         reason: 'no-config',
       };
     }
@@ -147,7 +188,11 @@ export class PredictionService {
     // 4. Build paper map.
     const paperMap = new Map<string, ParsedPaper>();
     for (const p of papers) {
-      const opts = this.safeParseJson<Record<string, unknown>>(p.options, {});
+      let opts = this.safeParseJson<Record<string, unknown>>(p.options, {});
+      // Some stored options are wrapped as { options: '{"type":"..."}' }
+      if (opts && typeof opts['options'] === 'string') {
+        opts = this.safeParseJson<Record<string, unknown>>(opts['options'], {});
+      }
       paperMap.set(p.id, {
         type: typeof opts['type'] === 'string' ? opts['type'] : 'test',
         answers: this.safeParseJson<unknown[]>(p.answers, []),
@@ -162,10 +207,27 @@ export class PredictionService {
     //    per-knowledge-point accuracy, so papers without knowledge-point tags are
     //    no longer skipped.
     const nodeAgg = new Map<number, NodeAgg>();
+    const composition: PredictionComposition = {
+      test: 0,
+      homework: 0,
+      comprehensive: 0,
+      custom: 0,
+      correction: 0,
+      schoolScore: 0,
+      weights: {
+        comprehensive: COMPREHENSIVE_WEIGHT,
+        test: IN_CLASS_WEIGHT,
+        custom: IN_CLASS_WEIGHT,
+        homework: HOMEWORK_WEIGHT,
+        schoolScore: SCHOOL_SCORE_WEIGHT,
+        correctionBonus: 0.1,
+      },
+    };
+    let hasCorrection = false;
 
     const accumulate = (
       nodeIndex: number,
-      weight: 'in-class' | 'homework',
+      weightCoef: number,
       correct: boolean,
       tags: Record<string, unknown>,
     ) => {
@@ -175,10 +237,7 @@ export class PredictionService {
         agg = {
           weightedCorrect: 0,
           weightedTotal: 0,
-          inClassCorrect: 0,
-          inClassTotal: 0,
-          homeworkCorrect: 0,
-          homeworkTotal: 0,
+          questionCount: 0,
           diffSum: 0,
           diffCount: 0,
           typeSum: 0,
@@ -186,17 +245,10 @@ export class PredictionService {
         };
         nodeAgg.set(nodeIndex, agg);
       }
-      const weightCoef = weight === 'in-class' ? IN_CLASS_WEIGHT : HOMEWORK_WEIGHT;
       const w = weightCoef * difficulty * typeCoef;
       agg.weightedTotal += w;
       if (correct) agg.weightedCorrect += w;
-      if (weight === 'in-class') {
-        agg.inClassTotal++;
-        if (correct) agg.inClassCorrect++;
-      } else {
-        agg.homeworkTotal++;
-        if (correct) agg.homeworkCorrect++;
-      }
+      agg.questionCount += 1;
       agg.diffSum += difficulty;
       agg.diffCount++;
       agg.typeSum += typeCoef;
@@ -211,13 +263,27 @@ export class PredictionService {
       const paper = paperMap.get(sub.paperId);
       if (!paper) continue;
 
-      const weight =
-        paper.type === 'homework'
-          ? 'homework'
+      // Count every submission by type for the composition breakdown.
+      if (paper.type === 'test') composition.test++;
+      else if (paper.type === 'homework') composition.homework++;
+      else if (paper.type === 'comprehensive') composition.comprehensive++;
+      else if (paper.type === 'custom') composition.custom++;
+      else if (paper.type === 'correction') {
+        composition.correction++;
+        hasCorrection = true;
+      } else {
+        continue; // unknown type
+      }
+
+      const weightCoef =
+        paper.type === 'comprehensive'
+          ? COMPREHENSIVE_WEIGHT
           : paper.type === 'test' || paper.type === 'custom'
-            ? 'in-class'
-            : null;
-      if (!weight) continue; // correction / unknown -> skip
+            ? IN_CLASS_WEIGHT
+            : paper.type === 'homework'
+              ? HOMEWORK_WEIGHT
+              : null;
+      if (weightCoef === null) continue; // correction only counts toward composition/bonus
 
       const nodeIndex = Math.floor((dt.getTime() - rangeStart.getTime()) / (NODE_DAYS * DAY_MS));
 
@@ -247,7 +313,7 @@ export class PredictionService {
           stdItem && typeof stdItem === 'object'
             ? ((stdItem as Record<string, unknown>)['tags'] as Record<string, unknown>) || {}
             : {};
-        accumulate(nodeIndex, weight, correct, tags);
+        accumulate(nodeIndex, weightCoef, correct, tags);
       }
 
       // Fill-in-blank / subjective questions
@@ -265,8 +331,28 @@ export class PredictionService {
           correct = false;
         }
         const tags = ((item?.['tags'] as Record<string, unknown>) || {}) as Record<string, unknown>;
-        accumulate(nodeIndex, weight, correct, tags);
+        accumulate(nodeIndex, weightCoef, correct, tags);
       }
+    }
+
+    // 5b. Incorporate school scores that fall within the prediction range.
+    const student = await this.studentRepository.findById(studentId);
+    const schoolScores = this.safeParseJson<unknown[]>(student?.schoolScores, []);
+
+    for (const raw of schoolScores) {
+      if (!raw || typeof raw !== 'object') continue;
+      const item = raw as Record<string, unknown>;
+      const dt = this.parseSchoolScoreDate(item);
+      if (!dt || dt < rangeStart || dt > rangeEnd) continue;
+
+      const score = Number(item['score'] ?? 0);
+      const totalScore = Number(item['totalScore'] ?? 0);
+      if (!totalScore || score < 0) continue;
+
+      const ratio = Math.min(score / totalScore, 1);
+      const nodeIndex = Math.floor((dt.getTime() - rangeStart.getTime()) / (NODE_DAYS * DAY_MS));
+      this.accumulateSchoolScore(nodeIndex, ratio, nodeAgg);
+      composition.schoolScore++;
     }
 
     // 6. Compute node scores.
@@ -280,8 +366,8 @@ export class PredictionService {
       if (agg.weightedTotal <= 0) continue;
 
       const weightedAcc = agg.weightedCorrect / agg.weightedTotal;
-      const nodeScore = this.clamp(Math.round(BASE_SCORE * weightedAcc), 0, MAX_SCORE);
-      const totalQuestions = agg.inClassTotal + agg.homeworkTotal;
+      const nodeScore =  Math.round((this.clamp(Math.round(BASE_SCORE * weightedAcc), 0, MAX_SCORE) * 0.8));
+      const totalQuestions = agg.questionCount;
       const kpScores: KnowledgePointScore[] = [
         { name: '综合', score: nodeScore, questionCount: totalQuestions },
       ];
@@ -300,7 +386,6 @@ export class PredictionService {
         knowledgePoints: kpScores,
       });
     }
-
     // 7. Linear regression over node scores.
     const n = nodes.length;
     if (n === 0) {
@@ -311,16 +396,25 @@ export class PredictionService {
         nodeDays: NODE_DAYS,
         nodes: [],
         predictedScore: null,
+        basePredictedScore: null,
+        correctionBonus: 0,
         predictedScoreRange: null,
         confidence: 1,
         nextNodeLabel,
         trend: 'flat',
         slope: 0,
+        composition,
+        suggestions: this.buildSuggestions(composition, 1),
         reason: 'no-data',
       };
     }
     if (n === 1) {
-      const predictedScore = nodes[0].score;
+      const basePredictedScore = nodes[0].score;
+      const predictedScore = hasCorrection
+        ? this.clamp(Math.round(basePredictedScore * 1.1), 0, MAX_SCORE)
+        : basePredictedScore;
+      const correctionBonus = predictedScore - basePredictedScore;
+      const confidence = this.computeConfidence(submissions);
       return {
         studentId,
         configured: true,
@@ -328,11 +422,15 @@ export class PredictionService {
         nodeDays: NODE_DAYS,
         nodes,
         predictedScore,
+        basePredictedScore,
+        correctionBonus,
         predictedScoreRange: this.buildScoreRange(predictedScore),
-        confidence: this.computeConfidence(submissions),
+        confidence,
         nextNodeLabel,
         trend: 'flat',
         slope: 0,
+        composition,
+        suggestions: this.buildSuggestions(composition, confidence),
       };
     }
 
@@ -348,8 +446,13 @@ export class PredictionService {
     }
     const slope = den > 0 ? num / den : 0;
     const intercept = yMean - slope * xMean;
-    const predictedScore = this.clamp(Math.round(intercept + slope * n), 0, MAX_SCORE);
+    const basePredictedScore = this.clamp(Math.round(intercept + slope * n), 0, MAX_SCORE);
+    const predictedScore = hasCorrection
+      ? this.clamp(Math.round(basePredictedScore * 1.1), 0, MAX_SCORE)
+      : basePredictedScore;
+    const correctionBonus = predictedScore - basePredictedScore;
     const trend = slope > 1 ? 'up' : slope < -1 ? 'down' : 'flat';
+    const confidence = this.computeConfidence(submissions);
 
     return {
       studentId,
@@ -358,11 +461,15 @@ export class PredictionService {
       nodeDays: NODE_DAYS,
       nodes,
       predictedScore,
+      basePredictedScore,
+      correctionBonus,
       predictedScoreRange: this.buildScoreRange(predictedScore),
-      confidence: this.computeConfidence(submissions),
+      confidence,
       nextNodeLabel,
       trend,
       slope: Number(slope.toFixed(4)),
+      composition,
+      suggestions: this.buildSuggestions(composition, confidence),
     };
   }
 
@@ -371,6 +478,35 @@ export class PredictionService {
       min: this.clamp(Math.round(score - 2), 0, MAX_SCORE),
       max: this.clamp(Math.round(score + 2), 0, MAX_SCORE),
     };
+  }
+
+  private buildSuggestions(
+    composition: PredictionComposition,
+    confidence: number,
+  ): string[] {
+    const suggestions: string[] = [];
+    if (composition.comprehensive < 5) {
+      suggestions.push('建议完成一套综合考试，提升预测覆盖度。');
+    }
+    if (composition.test < 5) {
+      suggestions.push('建议完成课上测试，补充课堂表现数据。');
+    }
+    if (composition.homework < 5) {
+      suggestions.push('建议完成课后作业，巩固知识点。');
+    }
+    if (composition.custom < 5) {
+      suggestions.push('建议进行自定义题库练习，补充个性化数据。');
+    }
+    if (composition.schoolScore < 5) {
+      suggestions.push('建议录入校内成绩，纳入预测参考。');
+    }
+    if (composition.correction < 5) {
+      suggestions.push('建议提交改错任务，可获得 10% 预测分数加成。');
+    }
+    if (confidence < 30) {
+      suggestions.push('建议保持规律作答，提高预测准确率。');
+    }
+    return suggestions;
   }
 
   /**
@@ -450,6 +586,41 @@ export class PredictionService {
       }
     }
     return { difficulty, typeCoef, kp };
+  }
+
+  private parseSchoolScoreDate(item: Record<string, unknown>): Date | null {
+    if (typeof item['date'] === 'string' && DATE_RE.test(item['date'])) {
+      return new Date(item['date'].replace(/-/g, '/'));
+    }
+    const ct = item['createTime'];
+    if (ct != null && ct !== '') {
+      const dt = new Date(String(ct).replace(/-/g, '/'));
+      if (!isNaN(dt.getTime())) return dt;
+    }
+    return null;
+  }
+
+  private accumulateSchoolScore(
+    nodeIndex: number,
+    ratio: number,
+    nodeAgg: Map<number, NodeAgg>,
+  ) {
+    let agg = nodeAgg.get(nodeIndex);
+    if (!agg) {
+      agg = {
+        weightedCorrect: 0,
+        weightedTotal: 0,
+        questionCount: 0,
+        diffSum: 0,
+        diffCount: 0,
+        typeSum: 0,
+        typeCount: 0,
+      };
+      nodeAgg.set(nodeIndex, agg);
+    }
+    agg.weightedCorrect += SCHOOL_SCORE_WEIGHT * ratio;
+    agg.weightedTotal += SCHOOL_SCORE_WEIGHT;
+    agg.questionCount += 1;
   }
 
   private safeParseJson<T>(str: string | null | undefined, fallback: T): T {
