@@ -494,9 +494,9 @@ export class PredictionService {
     if (composition.homework < 5) {
       suggestions.push('建议完成课后作业，巩固知识点。');
     }
-    if (composition.custom < 5) {
-      suggestions.push('建议进行自定义题库练习，补充个性化数据。');
-    }
+    // if (composition.custom < 5) {
+    //   suggestions.push('建议进行自定义题库练习，补充个性化数据。');
+    // }
     if (composition.schoolScore < 5) {
       suggestions.push('建议录入校内成绩，纳入预测参考。');
     }
