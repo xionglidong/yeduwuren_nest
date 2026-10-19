@@ -5,6 +5,7 @@ import {
 import { PaperService, FormattedStudentAnswer } from '../services/paper.service';
 import { Paper, StudentAnswer } from '@prisma/client';
 import { SubmitPaperDto } from '../dto/submit-paper.dto';
+import { EditPaperDto } from '../dto/edit-paper.dto';
 
 @Controller('api/v1/papers')
 export class PaperController {
@@ -20,6 +21,15 @@ export class PaperController {
   @Post()
   async createPaper(@Body() body: Record<string, unknown>): Promise<Record<string, unknown>> {
     return this.paperService.createPaper(body);
+  }
+
+  /** Complete edit endpoint used by the admin paper editor. */
+  @Put(':id/edit')
+  async editPaper(
+    @Param('id') id: string,
+    @Body() dto: EditPaperDto,
+  ): Promise<Record<string, unknown>> {
+    return this.paperService.editPaper(id, dto);
   }
 
   @Put(':id')

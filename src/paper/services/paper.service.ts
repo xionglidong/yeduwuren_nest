@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PaperRepository } from '../repositories/paper.repository';
 import { StudentService } from '../../student/student.service';
 import { Paper, StudentAnswer } from '@prisma/client';
 import { SubmitPaperDto } from '../dto/submit-paper.dto';
+import { EditPaperDto } from '../dto/edit-paper.dto';
 
 export interface FormattedStudentAnswer {
   id: string;
@@ -53,6 +54,31 @@ export class PaperService {
     const existing = await this.paperRepository.findPaperById(id);
     if (!existing) throw new NotFoundException(`Paper with ID ${id} not found`);
     return this.paperRepository.updatePaper(id, body);
+  }
+
+  async editPaper(id: string, dto: EditPaperDto): Promise<Record<string, unknown>> {
+    const existing = await this.paperRepository.findPaperById(id);
+    if (!existing) throw new NotFoundException(`Paper with ID ${id} not found`);
+
+    const normalizedName = dto.name.trim();
+    if (!normalizedName) throw new BadRequestException('套卷名称不能为空');
+    const duplicate = (await this.paperRepository.findAllPapers())
+      .some((paper) => paper.id !== id && paper.name.trim() === normalizedName);
+    if (duplicate) throw new BadRequestException(`已存在名为“${normalizedName}”的套题`);
+    if (dto.questionCount === 0 && dto.fillInBlankCount === 0) {
+      throw new BadRequestException('套卷不能没有任何题目');
+    }
+    if (dto.answers.length !== dto.questionCount || dto.questionTypes.length !== dto.questionCount) {
+      throw new BadRequestException('选择题数量与答案配置不一致');
+    }
+    if (dto.fillInBlankConfig.length !== dto.fillInBlankCount) {
+      throw new BadRequestException('填空/简答题数量与题目配置不一致');
+    }
+    if (dto.fillInBlankCount > 0 && dto.fillInBlankAnswerImage.length === 0) {
+      throw new BadRequestException('设置了填空/简答题时必须上传参考答案图片');
+    }
+
+    return this.paperRepository.updatePaper(id, { ...dto, name: normalizedName });
   }
 
   async deletePaper(id: string): Promise<void> {

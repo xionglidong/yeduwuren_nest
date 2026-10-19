@@ -165,12 +165,18 @@
 
     <div id="tabContent">
       <div id="paper" class="tab-pane fade-in">
-        <div class="bg-white rounded-xl shadow-md p-6 mb-8 fade-in">
-          <h2 class="text-xl font-semibold text-gray-700 mb-6 flex items-center"><i class="fa fa-plus-circle text-green-500 mr-2"></i> 添加新套卷 / 任务</h2>
+        <div id="paperEditorCard" class="bg-white rounded-xl shadow-md p-6 mb-8 fade-in">
+          <h2 id="paperEditorTitle" class="text-xl font-semibold text-gray-700 mb-6 flex items-center"><i class="fa fa-plus-circle text-green-500 mr-2"></i> 添加新套卷 / 任务</h2>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div class="space-y-4">
               <h3 class="text-lg font-medium text-gray-800">套卷信息</h3>
-              <div><label class="block text-sm font-medium text-gray-600 mb-1">发布类型 <span class="text-red-500">*</span></label><select id="paperType" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"><option value="test">📝 课上测试</option><option value="homework">📚 课后作业</option><option value="correction">📸 改错任务</option><option value="custom">🧩 自定义题库</option><option value="comprehensive">📊 综合考试</option></select></div>
+              <div><label class="block text-sm font-medium text-gray-600 mb-1">发布类型 <span class="text-red-500">*</span></label><select id="paperType" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
+                <option value="test">📝 课上测试</option>
+                <option value="homework">📚 课后作业</option>
+                <!-- <option value="correction">📸 改错任务</option> -->
+                <!-- <option value="custom">🧩 自定义题库</option> -->
+                <option value="comprehensive">📊 综合考试</option>
+              </select></div>
               <div id="paperGradeWrap"><label class="block text-sm font-medium text-gray-600 mb-1">所属年级 <span class="text-red-500">*</span></label><select id="paperGrade" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"><option value="grade1">高一</option><option value="grade2">高二</option><option value="grade3">高三</option></select></div>
               <div><label class="block text-sm font-medium text-gray-600 mb-1">套卷名称 <span class="text-red-500">*</span></label><input type="text" id="paperName" placeholder="如：第一套海淀期末考试题" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"></div>
               <div><label class="block text-sm font-medium text-gray-600 mb-1">截止提交时间 <span class="text-xs text-gray-400 font-normal">(精确到分，可选)</span></label><input type="datetime-local" id="paperDeadline" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"></div>
@@ -276,7 +282,10 @@
               <div id="dynamicAnswers" class="space-y-4"></div>
             </div>
           </div>
-          <button id="addPaperBtn" class="mt-6 px-8 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center text-base"><i class="fa fa-save mr-2"></i> 确认添加套卷</button>
+          <div class="mt-6 flex flex-wrap items-center gap-3">
+            <button id="addPaperBtn" class="px-8 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center text-base"><i class="fa fa-save mr-2"></i><span id="paperEditorSubmitText">确认添加套卷</span></button>
+            <button id="cancelPaperEditBtn" type="button" class="hidden px-6 py-3 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"><i class="fa fa-times mr-2"></i>取消编辑</button>
+          </div>
         </div>
 
         <div class="bg-white rounded-xl shadow-md p-6 mb-8 fade-in">
@@ -1344,6 +1353,8 @@
     const paperGrade = document.getElementById('paperGrade'), paperGradeWrap = document.getElementById('paperGradeWrap'), paperType = document.getElementById('paperType'), paperName = document.getElementById('paperName'), paperDeadline = document.getElementById('paperDeadline'), paperQuestionCount = document.getElementById('paperQuestionCount'), paperQuestionPoints = document.getElementById('paperQuestionPoints'), paperAllowRedo = document.getElementById('paperAllowRedo');
     const paperFillBlankCount = document.getElementById('paperFillBlankCount'), paperFillBlankPoints = document.getElementById('paperFillBlankPoints'), paperFillBlankAnswerImage = document.getElementById('paperFillBlankAnswerImage'), previewContainer = document.getElementById('previewContainer'), answerImagePreview = document.getElementById('answerImagePreview'), imagePreviewModal = document.getElementById('imagePreviewModal'), fullScreenPreviewImage = document.getElementById('fullScreenPreviewImage'), clearFillBlankAnswersBtn = document.getElementById('clearFillBlankAnswersBtn');
     let adminFillBlankAnswerFiles = [];
+    let adminExistingFillBlankAnswerImages = [];
+    let currentEditingPaperId = null;
     // Refactored question library UI variables
     const refactoredPaperListContainer = document.getElementById('refactoredPaperListContainer');
     const categoriesContainer = document.getElementById('categoriesContainer');
@@ -1533,6 +1544,8 @@
         }
 
         addPaperBtn.addEventListener('click', addNewPaper);
+        const cancelPaperEditBtn = document.getElementById('cancelPaperEditBtn');
+        if (cancelPaperEditBtn) cancelPaperEditBtn.addEventListener('click', resetPaperEditor);
         document.querySelectorAll('input[name="paperScope"]').forEach(radio => {
             radio.addEventListener('change', (e) => {
                 if (e.target.value === 'partial') {
@@ -1664,9 +1677,9 @@
         if (clearFillBlankAnswersBtn) {
           clearFillBlankAnswersBtn.addEventListener('click', () => {
             adminFillBlankAnswerFiles = [];
+            adminExistingFillBlankAnswerImages = [];
             if (paperFillBlankAnswerImage) paperFillBlankAnswerImage.value = '';
-            const grid = document.getElementById('adminPreviewGrid');
-            if (grid) grid.innerHTML = '';
+            renderAdminFillBlankAnswerPreview();
           });
         }
         if (paperPdfSelectBtn) {
@@ -1719,23 +1732,50 @@
       })
     }
 
-    function handleAdminPreview(input) {
+    function renderAdminFillBlankAnswerPreview() {
       const grid = document.getElementById('adminPreviewGrid');
+      if (!grid) return;
+      grid.innerHTML = '';
+      adminExistingFillBlankAnswerImages.forEach((url, index) => {
+        const item = document.createElement('div');
+        item.className = 'relative';
+        item.innerHTML = `<img src="${escapeHtmlText(url)}" class="w-16 h-16 object-cover rounded border shadow-sm"><button type="button" class="absolute -right-1 -top-1 w-5 h-5 rounded-full bg-red-500 text-white text-xs" title="移除" onclick="removeExistingFillBlankAnswerImage(${index})"><i class="fa fa-times"></i></button>`;
+        grid.appendChild(item);
+      });
+      adminFillBlankAnswerFiles.forEach((file, index) => {
+        const item = document.createElement('div');
+        item.className = 'relative';
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(file);
+        img.onload = () => URL.revokeObjectURL(img.src);
+        img.className = 'w-16 h-16 object-cover rounded border border-blue-300 shadow-sm';
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'absolute -right-1 -top-1 w-5 h-5 rounded-full bg-red-500 text-white text-xs';
+        removeBtn.title = '移除';
+        removeBtn.innerHTML = '<i class="fa fa-times"></i>';
+        removeBtn.onclick = () => {
+          adminFillBlankAnswerFiles.splice(index, 1);
+          renderAdminFillBlankAnswerPreview();
+        };
+        item.appendChild(img);
+        item.appendChild(removeBtn);
+        grid.appendChild(item);
+      });
+    }
+
+    window.removeExistingFillBlankAnswerImage = function(index) {
+      adminExistingFillBlankAnswerImages.splice(index, 1);
+      renderAdminFillBlankAnswerPreview();
+    };
+
+    function handleAdminPreview(input) {
       if (!input.files || input.files.length === 0) return;
-      if (grid && adminFillBlankAnswerFiles.length === 0) grid.innerHTML = '';
       Array.from(input.files).forEach(file => {
         adminFillBlankAnswerFiles.push(file);
-        const reader = new FileReader();
-        reader.onload = e => {
-          if (!grid) return;
-          const img = document.createElement('img');
-          img.src = e.target.result;
-          img.className = "w-16 h-16 object-cover rounded border shadow-sm";
-          grid.appendChild(img);
-        };
-        reader.readAsDataURL(file);
       });
       input.value = '';
+      renderAdminFillBlankAnswerPreview();
     }
 
     // ── Paper Question Metadata Helpers (Tags) ──
@@ -2334,6 +2374,12 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
                 <label class="inline-flex items-center"><input type="checkbox" name="answer_mult_${i}" value="D" class="form-checkbox text-purple-600"><span class="ml-1 text-sm font-medium">D</span></label>
               </div>
 
+              <div class="flex items-center relative">
+                <i class="fa fa-play-circle absolute left-3 text-gray-400"></i>
+                <input type="text" id="paperVideo${i}" placeholder="讲解视频文件名（可选）" class="w-full pl-8 pr-24 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm bg-white">
+                <button type="button" class="absolute right-2 text-blue-600 text-xs px-2 py-1 rounded bg-blue-50 hover:bg-blue-100 transition-colors" onclick="openVideoSelectModal('paperVideo${i}', 'filename')"><i class="fa fa-folder-open mr-1"></i>选择</button>
+              </div>
+
               <!-- Key-Value 标签 -->
               <div>
                 ${renderTagsEditorHtml('mc_' + i)}
@@ -2358,7 +2404,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
       }
     };
     
-    function scrollToForm() { document.querySelector('#paper .bg-white.rounded-xl.shadow-md.p-6.mb-8.fade-in').scrollIntoView({ behavior: 'smooth' }); setTimeout(() => paperName.focus(), 500); }
+    function scrollToForm() { document.getElementById('paperEditorCard').scrollIntoView({ behavior: 'smooth' }); setTimeout(() => paperName.focus(), 500); }
 
     function syncPaperFormByType() {
       const isCustomPaper = paperType && paperType.value === 'custom';
@@ -2735,6 +2781,125 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
       alert('作用范围已更新');
     }
 
+    function resetPaperEditor() {
+      currentEditingPaperId = null;
+      paperTargetStudentIds = [];
+      paperTargetStudentPage = 1;
+      paperTargetStudentGradeFilter = 'all';
+      paperTargetStudentKeyword = '';
+      adminFillBlankAnswerFiles = [];
+      adminExistingFillBlankAnswerImages = [];
+      if (paperType) paperType.value = 'test';
+      if (paperGrade) paperGrade.value = 'grade1';
+      paperName.value = '';
+      if (paperDeadline) paperDeadline.value = '';
+      paperQuestionCount.value = '0';
+      paperQuestionPoints.value = '2';
+      paperFillBlankCount.value = '0';
+      if (paperAllowRedo) paperAllowRedo.checked = false;
+      if (paperFillBlankAnswerImage) paperFillBlankAnswerImage.value = '';
+      if (paperPdfFile) paperPdfFile.value = '';
+      document.querySelector('input[name="paperScope"][value="all"]').checked = true;
+      document.getElementById('partialStudentsContainer').classList.add('hidden');
+      document.getElementById('selectedStudentsPreview').classList.add('hidden');
+      document.getElementById('selectedStudentsPreviewList').innerHTML = '';
+      document.getElementById('selectedStudentCount').textContent = '0';
+      document.getElementById('filteredStudentCount').textContent = '0';
+      document.getElementById('paperEditorTitle').innerHTML = '<i class="fa fa-plus-circle text-green-500 mr-2"></i> 添加新套卷 / 任务';
+      document.getElementById('paperEditorSubmitText').textContent = '确认添加套卷';
+      document.getElementById('addPaperBtn').classList.remove('bg-blue-600', 'hover:bg-blue-700');
+      document.getElementById('addPaperBtn').classList.add('bg-green-500', 'hover:bg-green-600');
+      document.getElementById('cancelPaperEditBtn').classList.add('hidden');
+      renderAdminFillBlankAnswerPreview();
+      generateAnswerSelects();
+      generateFbPointsConfig();
+      syncPaperFormByType();
+    }
+
+    async function openPaperEditor(paperId) {
+      const paper = g_papers.find((item) => item.id === paperId);
+      if (!paper) return alert('未找到该套题');
+      currentEditingPaperId = paper.id;
+      paperType.value = paper.type || 'test';
+      paperGrade.value = paper.grade || 'grade1';
+      paperName.value = paper.name || '';
+      paperDeadline.value = paper.deadline || '';
+      paperQuestionCount.value = String(parseInt(paper.questionCount) || 0);
+      paperQuestionPoints.value = String(parseFloat(paper.singlePoints) || 2);
+      paperFillBlankCount.value = String(parseInt(paper.fillInBlankCount) || getPaperFillBlankConfig(paper).length || 0);
+      paperAllowRedo.checked = !!paper.allowRedo;
+      paperPdfFile.value = paper.pdfFile || '';
+      paperTargetStudentIds = Array.isArray(paper.targetStudentIds) ? paper.targetStudentIds.map(String) : [];
+      adminFillBlankAnswerFiles = [];
+      adminExistingFillBlankAnswerImages = Array.isArray(paper.fillInBlankAnswerImage)
+        ? [...paper.fillInBlankAnswerImage]
+        : (paper.fillInBlankAnswerImage ? [paper.fillInBlankAnswerImage] : []);
+
+      generateAnswerSelects();
+      const questionTypes = Array.isArray(paper.questionTypes) ? paper.questionTypes : [];
+      const videos = Array.isArray(paper.videos) ? paper.videos : [];
+      for (let i = 1; i <= (parseInt(paper.questionCount) || 0); i++) {
+        const type = questionTypes[i - 1] || 'single';
+        const typeSelect = document.getElementById(`qtype_${i}`);
+        if (typeSelect) typeSelect.value = type;
+        toggleQTypeUI(i);
+        const answer = getPaperStandardAnswer(paper, i - 1) || 'A';
+        if (type === 'multiple') {
+          document.querySelectorAll(`input[name="answer_mult_${i}"]`).forEach((input) => { input.checked = answer.includes(input.value); });
+        } else {
+          const answerSelect = document.getElementById(`answer_single_${i}`);
+          if (answerSelect) answerSelect.value = answer;
+        }
+        const videoInput = document.getElementById(`paperVideo${i}`);
+        if (videoInput) videoInput.value = videos[i - 1] || '';
+        const answerItem = Array.isArray(paper.answers) ? paper.answers[i - 1] : null;
+        initTagsEditorData(`mc_${i}`, answerItem && typeof answerItem === 'object' ? (answerItem.tags || {}) : {});
+      }
+
+      generateFbPointsConfig();
+      getPaperFillBlankConfig(paper).forEach((item, index) => {
+        const pointInput = document.getElementById(`fbPoint${index + 1}`);
+        const videoInput = document.getElementById(`fbVideo${index + 1}`);
+        if (pointInput) pointInput.value = item.points !== undefined ? item.points : 5;
+        if (videoInput) videoInput.value = item.video || '';
+        initTagsEditorData(`fb_${index + 1}`, item.tags || {});
+      });
+
+      const scopeMode = paperTargetStudentIds.length > 0 ? 'partial' : 'all';
+      document.querySelector(`input[name="paperScope"][value="${scopeMode}"]`).checked = true;
+      document.getElementById('partialStudentsContainer').classList.toggle('hidden', scopeMode !== 'partial');
+      if (scopeMode === 'partial') await renderPaperTargetStudentsList();
+      renderAdminFillBlankAnswerPreview();
+      syncPaperFormByType();
+      document.getElementById('paperEditorTitle').innerHTML = `<i class="fa fa-pencil-square-o text-blue-600 mr-2"></i> 编辑套卷：${escapeHtmlText(paper.name || '')}`;
+      document.getElementById('paperEditorSubmitText').textContent = '保存套卷修改';
+      document.getElementById('addPaperBtn').classList.remove('bg-green-500', 'hover:bg-green-600');
+      document.getElementById('addPaperBtn').classList.add('bg-blue-600', 'hover:bg-blue-700');
+      document.getElementById('cancelPaperEditBtn').classList.remove('hidden');
+      scrollToForm();
+    }
+
+    async function regradeEditedPaper(paperId, paper) {
+      const records = g_records.filter((record) => record.paperId === paperId && record.id);
+      for (const record of records) {
+        const studentAnswers = Array.isArray(record.answers) ? record.answers : [];
+        let score = 0;
+        for (let index = 0; index < paper.questionCount; index++) {
+          const rawAnswer = studentAnswers[index];
+          const studentAnswer = rawAnswer && typeof rawAnswer === 'object' ? (rawAnswer.answer || '') : (rawAnswer || '');
+          const standardAnswer = paper.answers[index] ? paper.answers[index].answer : '';
+          score += getQuestionScore(studentAnswer, standardAnswer, paper.questionTypes[index] === 'multiple', paper.singlePoints).score;
+        }
+        score += getRecordFillBlankScore(record, paper);
+        await fetch(`/api/v1/papers/${paperId}/submissions/${record.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ score, totalPoints: paper.totalPoints })
+        });
+      }
+      return records.length;
+    }
+
     async function addNewPaper() {
       const type = paperType ? paperType.value : 'test', grade = paperGrade.value, name = paperName.value.trim(), deadline = paperDeadline && paperDeadline.value ? paperDeadline.value.trim() : '';
       const pdfRaw = paperPdfFile ? paperPdfFile.value.trim() : '';
@@ -2750,10 +2915,14 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
       const targetStudentIds = paperScope === 'all' ? [] : [...paperTargetStudentIds];
       
       if (!name) return alert('请填写套卷名称');
+      if (g_papers.some((paper) => paper.id !== currentEditingPaperId && String(paper.name || '').trim() === name)) {
+        return alert(`已存在名为“${name}”的套题，请使用其他名称。`);
+      }
       if (questionCount === 0 && fillBlankCount === 0) return alert('套卷不能没有任何题目');
       
-      const answers = []; 
+      const answers = [];
       const questionTypes = [];
+      const videos = [];
       if (questionCount > 0) {
           if (!singlePoints) return alert('请填写选择题单题分值');
           for (let i = 1; i <= questionCount; i++) {
@@ -2771,6 +2940,7 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
               const tags = getTagsEditorData('mc_' + i);
               answers.push({ answer: answerStr, tags });
               questionTypes.push(qtype);
+              videos.push((document.getElementById(`paperVideo${i}`)?.value || '').trim());
           }
       }
 
@@ -2790,10 +2960,10 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
           }
       }
       
-      let fillBlankImageBase64 = []; 
+      let fillBlankImageBase64 = [...adminExistingFillBlankAnswerImages];
       if (fillBlankCount > 0) {
         const files = adminFillBlankAnswerFiles.length > 0 ? adminFillBlankAnswerFiles : (paperFillBlankAnswerImage.files || []);
-        if (!files || files.length === 0) return alert('设置了填空题，必须上传填空题答案图片！');
+        if (fillBlankImageBase64.length === 0 && (!files || files.length === 0)) return alert('设置了填空题，必须上传填空题答案图片！');
         try { 
             const icon = document.getElementById('teacherUploadIcon');
             if(icon) icon.className = 'fa fa-spinner fa-spin text-blue-500 text-4xl';
@@ -2819,8 +2989,23 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
       }
       const totalPoints = totalSelectionPoints + totalFbPoints;
       
-      const newPaper = { id: 'p' + Date.now(), type, grade, name, deadline, questionCount, singlePoints, fillInBlankCount: fillBlankCount, fillInBlankConfig: fillInBlankConfig, fbPointsArray: fbPointsArray, fillBlankVideos: fillBlankVideos, fillInBlankAnswerImage: fillBlankImageBase64, allowRedo: allowRedo, isArchived: false, archivedAt: '', categoryId: '', categoryIds: [], targetStudentIds: targetStudentIds, pdfFile: pdfFile, totalPoints: totalPoints, answers, questionTypes, createTime: new Date().toLocaleString() };
-      await fetch('/api/v1/papers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newPaper) });
+      const editablePaper = { type, grade, name, deadline, questionCount, singlePoints, fillInBlankCount: fillBlankCount, fillInBlankConfig, fbPointsArray, fillBlankVideos, fillInBlankAnswerImage: fillBlankImageBase64, allowRedo, targetStudentIds, pdfFile, totalPoints, answers, questionTypes, videos };
+      const editingId = currentEditingPaperId;
+      const endpoint = editingId ? `/api/v1/papers/${editingId}/edit` : '/api/v1/papers';
+      const payload = editingId
+        ? editablePaper
+        : { id: 'p' + Date.now(), ...editablePaper, isArchived: false, archivedAt: '', categoryId: '', categoryIds: [], createTime: new Date().toLocaleString() };
+      const saveResponse = await fetch(endpoint, { method: editingId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!saveResponse.ok) {
+        let message = '保存失败，请稍后重试';
+        try {
+          const errorData = await saveResponse.json();
+          message = errorData.message || errorData.error || message;
+          if (Array.isArray(message)) message = message.join('\n');
+        } catch (_) {}
+        return alert(message);
+      }
+      const regradedCount = editingId ? await regradeEditedPaper(editingId, editablePaper) : 0;
       
       // Reset Paper scope selections
       paperTargetStudentIds = [];
@@ -2837,20 +3022,12 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
       document.getElementById('selectedStudentsPreview').classList.add('hidden');
       document.getElementById('selectedStudentsPreviewList').innerHTML = '';
 
-      renderAllPaperLists();
-      
-      if (paperType) paperType.value = 'test'; paperName.value = ''; if (paperDeadline) paperDeadline.value = ''; paperQuestionCount.value = '0'; paperQuestionPoints.value = '2'; if (document.getElementById('paperMultipleQuestionPoints')) document.getElementById('paperMultipleQuestionPoints').value = '6'; paperFillBlankCount.value = '0'; paperFillBlankAnswerImage.value = ''; 
+      await renderAllPaperLists();
+
       const pContainer = document.getElementById('previewContainer'); if(pContainer) pContainer.classList.add('hidden'); 
       const aImgPreview = document.getElementById('answerImagePreview'); if(aImgPreview) aImgPreview.src = ''; 
-      const adminPreviewGrid = document.getElementById('adminPreviewGrid'); if(adminPreviewGrid) adminPreviewGrid.innerHTML = '';
-      if (paperPdfFile) paperPdfFile.value = '';
-      adminFillBlankAnswerFiles = [];
-
-      generateAnswerSelects(); 
-      if (typeof generateFbPointsConfig === 'function') generateFbPointsConfig(); 
-      syncPaperFormByType();
-      if (paperAllowRedo) paperAllowRedo.checked = false;
-      alert('任务添加成功！');
+      resetPaperEditor();
+      alert(editingId ? `套题修改已保存，已重新判分 ${regradedCount} 份答卷！` : '任务添加成功！');
     }
 
     async function renderAllPaperLists() {
@@ -3314,13 +3491,9 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
               
               <!-- Action buttons -->
               <div class="flex flex-wrap gap-2 pt-2 border-t border-dashed border-gray-100">
-                <button type="button" class="rename-paper px-2.5 py-1.5 bg-sky-50 text-sky-600 hover:bg-sky-100 text-xs rounded-lg font-medium transition-colors" data-id="${paper.id}"><i class="fa fa-pencil mr-1"></i>重命名</button>
-                <button type="button" class="edit-paper-deadline px-2.5 py-1.5 bg-purple-50 text-purple-600 hover:bg-purple-100 text-xs rounded-lg font-medium transition-colors" data-id="${paper.id}"><i class="fa fa-clock-o mr-1"></i>编辑截止</button>
-                <button type="button" class="edit-paper-scope px-2.5 py-1.5 bg-violet-50 text-violet-600 hover:bg-violet-100 text-xs rounded-lg font-medium transition-colors" data-id="${paper.id}"><i class="fa fa-users mr-1"></i>编辑范围</button>
-                <button type="button" class="toggle-redo px-2.5 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 text-xs rounded-lg font-medium transition-colors" data-id="${paper.id}" data-redo="${redoEnabled ? '1' : '0'}"><i class="fa ${redoEnabled ? 'fa-toggle-on' : 'fa-toggle-off'} mr-1"></i>${redoEnabled ? '关闭重做' : '开启重做'}</button>
+                <button type="button" class="edit-paper px-3 py-1.5 bg-sky-600 text-white hover:bg-sky-700 text-xs rounded-lg font-semibold transition-colors" data-id="${paper.id}"><i class="fa fa-pencil-square-o mr-1"></i>编辑</button>
                 <button type="button" class="view-answers px-2.5 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 text-xs rounded-lg font-medium transition-colors" data-id="${paper.id}"><i class="fa fa-list mr-1"></i>${answerCount}人明细</button>
                 <button type="button" class="view-analysis px-2.5 py-1.5 bg-purple-50 text-purple-600 hover:bg-purple-100 text-xs rounded-lg font-semibold transition-colors" data-id="${paper.id}"><i class="fa fa-pie-chart mr-1"></i>数据分析</button>
-                <button type="button" class="config-answers px-2.5 py-1.5 bg-green-50 text-green-600 hover:bg-green-100 text-xs rounded-lg font-medium transition-colors" data-id="${paper.id}"><i class="fa fa-cog mr-1"></i>配置答案</button>
                 <button type="button" class="archive-paper px-2.5 py-1.5 bg-amber-50 text-amber-600 hover:bg-amber-100 text-xs rounded-lg font-medium transition-colors" data-id="${paper.id}"><i class="fa fa-archive mr-1"></i>归档</button>
                 <button type="button" class="delete-paper px-2.5 py-1.5 bg-red-50 text-red-500 hover:bg-red-100 text-xs rounded-lg font-medium transition-colors" data-id="${paper.id}"><i class="fa fa-trash mr-1"></i>删除</button>
               </div>
@@ -3344,13 +3517,9 @@ tr.querySelector('.view-record-detail').addEventListener('click', function() {
           });
           
           // Action button listeners
-          paperItem.querySelector('.rename-paper').addEventListener('click', function () { renamePaper(this.dataset.id); });
-          paperItem.querySelector('.edit-paper-deadline').addEventListener('click', function () { editPaperDeadline(this.dataset.id); });
-          paperItem.querySelector('.edit-paper-scope').addEventListener('click', function () { openPaperScopeEditModal(this.dataset.id); });
-          paperItem.querySelector('.toggle-redo').addEventListener('click', function () { togglePaperRedoStatus(this.dataset.id, this.dataset.redo === '1'); });
+          paperItem.querySelector('.edit-paper').addEventListener('click', function () { openPaperEditor(this.dataset.id); });
           paperItem.querySelector('.view-answers').addEventListener('click', function () { showAnswerDetails(this.dataset.id); });
           paperItem.querySelector('.view-analysis').addEventListener('click', function () { showPaperAnalysis(this.dataset.id); });
-          paperItem.querySelector('.config-answers').addEventListener('click', function () { openAnswerConfigModal(this.dataset.id); });
           paperItem.querySelector('.archive-paper').addEventListener('click', function () { if (confirm(`确定要归档"${paper.name}"吗？归档后学生端将不再显示该套题相关数据。`)) archivePaper(this.dataset.id); });
           paperItem.querySelector('.delete-paper').addEventListener('click', function () { if (confirm(`确定要删除"${paper.name}"吗？相关数据也将被删除。`)) deletePaper(this.dataset.id); });
         });
