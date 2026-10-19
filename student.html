@@ -546,6 +546,7 @@
     let currentPaper = null, currentQuestionIndex = 0, studentAnswers = [], studentInfo = {}, studentPointsData = {}, exchangeRecords = [], prizes = [], timerInterval = null, secondsElapsed = 0;
     let interimEvents = []
     let uploadedFbImages = [], fbSelfScore = 0, fbIsConfirmed = false, allAnswerRecords = [], fbJudgments = null, currentSubmittingScore = 0, currentSubmittingTimeElapsed = 0;
+    let currentPartialRecord = null, lockedAnswerIndexes = new Set();
     let statsListModalState = { type: '', page: 1, items: [], keyword: '' };
     let scoreRankListPage = 1, scoreRankListItems = []; let timeRankListPage = 1, timeRankListItems = []; const TIME_RANK_LIST_PAGE_SIZE = 5;
     let wrongRateLeaderboardPage = 1, wrongRateLeaderboardItems = [];
@@ -1218,7 +1219,6 @@
       document.getElementById('hideTimerOverlayBtn').classList.remove('hidden');
       document.getElementById('timerEventsArea').classList.remove('hidden');
       
-      secondsElapsed = 0;
       startTimer();
     }
 
@@ -1249,6 +1249,23 @@
       if (eventsArea) {
        eventsArea.classList.add('hidden');
       }
+    }
+
+    function resumeTimerWithoutOverlay() {
+      const overlay = document.getElementById('timerOverlay');
+      const dropdown = document.getElementById('timerOverlayDropdown');
+      const recommendedInput = document.getElementById('timerRecommendedInput');
+      recommendedInput.disabled = true;
+      document.getElementById('startTimerOverlayBtn').classList.add('hidden');
+      document.getElementById('timerActiveMsg').classList.remove('hidden');
+      document.getElementById('hideTimerOverlayBtn').classList.remove('hidden');
+      document.getElementById('timerEventsArea').classList.remove('hidden');
+      if (overlay) {
+        overlay.style.transform = 'translateY(-100%)';
+        overlay.classList.add('pointer-events-none', 'opacity-0');
+      }
+      if (dropdown) dropdown.classList.remove('hidden');
+      startTimer();
     }
 
     // 积分兑换奖品
@@ -3034,6 +3051,7 @@
         setsList.innerHTML = catPapers.map((paper, idx) => {
           const latestRecord = getLatestRecordForPaper(paper.id, allAnswers);
           const hasAnswered = latestRecord !== null;
+	          const isPartial = latestRecord && latestRecord.status === 0;
           const bestScore = getBestAnswerScore(paper);
           const expired = isPaperExpired(paper);
           const canRedo = !!paper.allowRedo && !expired;
@@ -3041,7 +3059,12 @@
           let statusHtml = '';
           let actionBtnHtml = '';
           
-          if (hasAnswered) {
+	          if (isPartial) {
+	            statusHtml = `<span class="ml-2 text-xs font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full whitespace-nowrap">部分完成 · 得分 ${getRecordTotalScore(latestRecord, paper)}/${paper.totalPoints}${expired ? ' · 已截止' : ''}</span>`;
+	            actionBtnHtml = expired
+	              ? `<button class="px-3 py-1.5 bg-gray-100 text-gray-400 text-xs font-bold rounded-lg cursor-not-allowed" disabled><i class="fa fa-lock mr-1"></i>已截止</button>`
+	              : `<button class="px-3 py-1.5 bg-amber-500 text-white text-xs font-bold rounded-lg hover:bg-amber-600 transition-all start-paper-btn" data-paper-id="${paper.id}"><i class="fa fa-pencil-square-o mr-1"></i>继续作答</button>`;
+	          } else if (hasAnswered) {
             const latestDisplayScore = getRecordTotalScore(latestRecord, paper);
             let correctionBtnHtml = '';
             if (latestDisplayScore < paper.totalPoints) {
@@ -3177,7 +3200,7 @@
                     return false; 
                 }
                 
-                const hasAnswered = answers.some(a => a.paperId === p.id && a.studentId === studentInfo.id);
+	                const hasAnswered = answers.some(a => a.paperId === p.id && a.studentId === studentInfo.id);
                 return !hasAnswered; 
             });
 
@@ -3346,12 +3369,18 @@
         const absoluteIndex = startIndex + index + 1;
         const isNew = paper.createTime ? new Date() - new Date(paper.createTime) < 24 * 60 * 60 * 1000 : false;
         const hasAnswered = latestRecord !== null;
+        const isPartial = latestRecord && latestRecord.status === 0;
         const bestScore = getBestAnswerScore(paper);
         const expired = isPaperExpired(paper);
         const canRedo = !!paper.allowRedo && !expired;
         
         let statusHtml = '', buttonHtml = '';
-        if (hasAnswered) {
+        if (isPartial) {
+          statusHtml = `<span class="ml-3 text-sm font-bold text-amber-600">部分完成 · 得分 ${getRecordTotalScore(latestRecord, paper)}/${paper.totalPoints}${expired ? ' · 已截止' : ''}</span>`;
+          buttonHtml = expired
+            ? '<button class="px-3 py-1.5 rounded-full bg-gray-100 text-gray-400 text-xs font-bold cursor-not-allowed border border-gray-200" disabled><i class="fa fa-lock mr-1"></i>已截止</button>'
+            : `<button class="px-3 py-1.5 rounded-full bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 continue-paper-btn" data-paper-id="${paper.id}"><i class="fa fa-pencil-square-o mr-1"></i>继续作答</button>`;
+        } else if (hasAnswered) {
           const latestDisplayScore = getRecordTotalScore(latestRecord, paper);
           if (canRedo) {
             statusHtml = `<span class="ml-3 text-sm font-bold text-indigo-600">最高分 ${bestScore}/${paper.totalPoints} · 可重做</span>`;
@@ -3389,14 +3418,16 @@
 
         paperItem.addEventListener('click', function (e) {
           if (e.target.closest('.view-history-btn') || e.target.closest('.correction-btn')) return;
-          if (expired && !hasAnswered) {
+          if (expired) {
             return showGeneralModal('已截止', `该套题提交已截止 (${paper.deadline.replace('T', ' ')})，无法进行作答与提交！`, 'warning');
           }
           openAnswerCard(this.dataset.paperId);
         });
 
-        if (hasAnswered) paperItem.querySelector('.view-history-btn').addEventListener('click', function () { showHistoryDetailModal(paper.id); });
-        if (hasAnswered && getRecordTotalScore(latestRecord, paper) < paper.totalPoints) {
+        const continueBtn = paperItem.querySelector('.continue-paper-btn');
+        if (continueBtn) continueBtn.addEventListener('click', function (e) { e.stopPropagation(); openAnswerCard(paper.id); });
+        if (hasAnswered && !isPartial) paperItem.querySelector('.view-history-btn').addEventListener('click', function () { showHistoryDetailModal(paper.id); });
+        if (hasAnswered && !isPartial && getRecordTotalScore(latestRecord, paper) < paper.totalPoints) {
           const corrBtn = paperItem.querySelector('.correction-btn');
           if (corrBtn) {
             corrBtn.addEventListener('click', function (e) {
@@ -3519,17 +3550,30 @@
       if (!studentInfo.name) return showGeneralModal('请先登录', '请先登录后再进行答题', 'warning');
       currentPaper = visiblePapers.find(p => p.id === paperId); if (!currentPaper) return;
       const latestRecord = await getLatestAnswerRecord(paperId);
-      if (isPaperExpired(currentPaper) && latestRecord === null) {
-        return showGeneralModal('已截止', `该套题提交已截止 (${currentPaper.deadline ? currentPaper.deadline.replace('T', ' ') : ''})，无法进行作答！`, 'warning');
-      }
-      if (isPaperExpired(currentPaper) && latestRecord !== null) {
-        return showGeneralModal('已截止', `该套题提交已截止 (${currentPaper.deadline ? currentPaper.deadline.replace('T', ' ') : ''})，已无法再重做提交！`, 'warning');
-      }
-      if (latestRecord !== null && !currentPaper.allowRedo) return showGeneralModal('提示', '该套卷您已完成作答，请查看详情。', 'warning');
+	      currentPartialRecord = latestRecord && latestRecord.status === 0 ? latestRecord : null;
+	      if (isPaperExpired(currentPaper)) {
+	        return showGeneralModal('已截止', `该套题提交已截止 (${currentPaper.deadline ? currentPaper.deadline.replace('T', ' ') : ''})，无法继续作答与提交！`, 'warning');
+	      }
+	      if (latestRecord !== null && !currentPartialRecord && !currentPaper.allowRedo) return showGeneralModal('提示', '该套卷您已完成作答，请查看详情。', 'warning');
       window.g_recommendedTimeLimitAlerted = false;
       
       const draftDataStr = localStorage.getItem('draft_' + paperId);
-      if (draftDataStr) {
+	      lockedAnswerIndexes = new Set();
+	      if (currentPartialRecord) {
+	          studentAnswers = new Array(currentPaper.questionCount).fill(null);
+	          (currentPartialRecord.answers || []).forEach((answer, index) => {
+	            if (index < studentAnswers.length && answer !== null && answer !== undefined && String(answer).trim() !== '') {
+	              studentAnswers[index] = answer;
+	              lockedAnswerIndexes.add(index);
+	            }
+	          });
+	          secondsElapsed = currentPartialRecord.timeElapsed || 0;
+	          uploadedFbImages = Array.isArray(currentPartialRecord.fillInBlankStudentImage) ? [...currentPartialRecord.fillInBlankStudentImage] : [];
+	          uploadedDraftImages = Array.isArray(currentPartialRecord.draftImages) ? [...currentPartialRecord.draftImages] : [];
+	          fbJudgments = Array.isArray(currentPartialRecord.fillInBlankDetails) ? [...currentPartialRecord.fillInBlankDetails] : null;
+	          fbSelfScore = Number(currentPartialRecord.fillInBlankScore) || 0;
+	          fbIsConfirmed = currentPartialRecord.fillInBlankConfirmed === true;
+	      } else if (draftDataStr) {
           const draftData = JSON.parse(draftDataStr);
           studentAnswers = draftData.answers;
           secondsElapsed = draftData.time || 0;
@@ -3541,17 +3585,19 @@
           uploadedFbImages = [];
           uploadedDraftImages = []; // 🚀 初始化草稿纸
       }
-      fbSelfScore = 0;
-      fbJudgments = null;
-      fbIsConfirmed = false;
+	      if (!currentPartialRecord) {
+	        fbSelfScore = 0;
+	        fbJudgments = null;
+	        fbIsConfirmed = false;
+	      }
       currentQuestionIndex = 0;
       document.getElementById('timerOverlayPaperTitle').textContent = currentPaper.name;
-      interimEvents = [];
+	      interimEvents = currentPartialRecord && Array.isArray(currentPartialRecord.interimEvents) ? [...currentPartialRecord.interimEvents] : [];
       document.getElementById('timerEventInput').value = '';
       updateTimerEventsUI();
       
       const recommendedInput = document.getElementById('timerRecommendedInput');
-      recommendedInput.value = 60;
+	      recommendedInput.value = currentPartialRecord && currentPartialRecord.recommendedTime ? currentPartialRecord.recommendedTime : 60;
       recommendedInput.disabled = false;
       
       const startTimerBtn = document.getElementById('startTimerOverlayBtn');
@@ -3573,11 +3619,11 @@
       const eventsArea = document.getElementById('timerEventsArea');
       
       stopTimer();
-      secondsElapsed = 0;
       document.getElementById('timerCountdownDigital').textContent = "00:00";
       document.getElementById('timerClockHand').style.transform = 'rotate(360deg)';
       if (eventsArea) eventsArea.classList.add('hidden');
-      showTimerOverlay();
+	      if (currentPartialRecord) resumeTimerWithoutOverlay();
+	      else showTimerOverlay();
       
       modalPaperTitle.textContent = currentPaper.name; 
       const mcContainer = document.getElementById('questionContent'), navContainer = document.getElementById('questionNav'), prevBtn = document.getElementById('prevQuestionBtn'), nextBtn = document.getElementById('nextQuestionBtn');
@@ -3592,7 +3638,7 @@
           generateQuestionNav(); renderCurrentQuestion(); 
       }
       updateNavButtons(); submitAllBtn.textContent = '提交所有答案'; answerCardModal.classList.remove('hidden'); setTimeout(() => { modalContent.classList.remove('scale-95', 'opacity-0'); modalContent.classList.add('scale-100', 'opacity-100'); }, 10);
-      renderFillBlankSection();renderFillBlankSection();
+	      renderFillBlankSection();
       renderDraftSection(); // 🚀 渲染草稿纸上传区
     }
 
@@ -3606,7 +3652,8 @@
         fbIsConfirmed = false;
         return;
       }
-      fbSection.classList.remove('hidden'); const totalFbPoints = currentPaper.fbPointsArray ? currentPaper.fbPointsArray.reduce((a,b)=>a+b,0) : (count * parseInt(currentPaper.fillInBlankPoints || 0));
+	      fbSection.classList.remove('hidden'); const totalFbPoints = currentPaper.fbPointsArray ? currentPaper.fbPointsArray.reduce((a,b)=>a+b,0) : (count * parseInt(currentPaper.fillInBlankPoints || 0));
+	      const lockedFillBlank = !!(currentPartialRecord && currentPartialRecord.fillInBlankConfirmed === true);
       
       // 🚀 核心升级：开启 multiple 连拍，添加照片瀑布流容器
       fbSection.innerHTML = `<h4 class="text-lg font-bold mb-4 flex items-center"><i class="fa fa-pencil text-primary mr-2"></i> 填空题部分 <span class="ml-2 text-sm bg-gray-100 px-2 py-1 rounded text-gray-600">共${count}题 · 总分${totalFbPoints}分</span></h4><div id="fbUploadStep" class="text-center p-8 border-2 border-dashed border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"><input type="file" id="fbUploadInput" accept="image/jpeg,image/png,image/webp,image/gif" multiple class="hidden"><div class="cursor-pointer" onclick="document.getElementById('fbUploadInput').click()"><i class="fa fa-cloud-upload text-4xl text-gray-400 mb-3"></i><p class="font-medium text-gray-700">点击上传答题卡照片 (可多选)</p><p class="text-sm text-gray-500 mt-1">支持一次性上传多张照片，上传后需确认</p></div></div><div id="fbGradingStep" class="hidden animate-fadeIn"><div class="grid md:grid-cols-2 gap-4"><div class="border rounded-lg p-2"><h5 class="text-center font-bold mb-2 text-gray-700">你的答卷</h5><div id="fbStudentImagesContainer" class="max-h-[400px] overflow-y-auto space-y-2 border border-gray-100 p-1"></div><div id="fbActionButtons" class="mt-3 flex justify-center space-x-3"><button onclick="appendUploadImage()" class="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 text-sm font-medium"><i class="fa fa-camera mr-1"></i> 继续添加</button><button onclick="reuploadImage()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm font-medium"><i class="fa fa-refresh mr-1"></i> 重新上传全部</button><button onclick="confirmUpload()" class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm font-medium"><i class="fa fa-check mr-1"></i> 确认提交</button></div><div id="fbConfirmedBadge" class="hidden mt-2 text-center"><span class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold"><i class="fa fa-lock mr-1"></i> 已确认</span></div></div><div id="fbReferenceArea" class="hidden border rounded-lg p-2 bg-green-50"><h5 class="text-center font-bold mb-2 text-green-700">参考答案</h5>${Array.isArray(currentPaper.fillInBlankAnswerImage) ? `<div class="flex flex-wrap gap-2">` + currentPaper.fillInBlankAnswerImage.map(url => `<img src="${url}" class="h-32 w-auto rounded object-contain cursor-pointer hover:opacity-90 border shadow-sm" onclick="showImagePreview(this.src)" />`).join('') + `</div>` : `<img src="${currentPaper.fillInBlankAnswerImage || ''}" class="w-full h-auto rounded object-contain max-h-[300px] cursor-pointer hover:opacity-90" onclick="showImagePreview(this.src)" />`}</div></div><div id="fbScoreArea" class="hidden mt-6 bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden"><div class="bg-gray-50 px-4 py-3 border-b flex justify-between items-center"><h5 class="font-bold text-gray-800">自评打分</h5><span id="fbCurrentScoreDisplay" class="text-primary font-bold text-lg">当前得分: 0 / ${totalFbPoints}</span></div><div class="p-4"><p class="text-sm text-gray-500 mb-4 bg-blue-50 text-blue-700 p-2 rounded"><i class="fa fa-info-circle mr-1"></i> 请对照参考答案，为每一道填空题输入得分。</p><div id="fbQuestionJudgments" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"></div></div></div></div>`;
@@ -3654,23 +3701,32 @@
           document.getElementById('fbGradingStep').classList.remove('hidden');
           const container = document.getElementById('fbStudentImagesContainer');
           container.innerHTML = uploadedFbImages.map(url => `<img src="${url}" class="w-full h-auto rounded object-contain mb-2 border border-gray-200 shadow-sm cursor-pointer hover:opacity-90" onclick="showImagePreview(this.src)" />`).join('');
+	          if (fbIsConfirmed) {
+	            document.getElementById('fbActionButtons').classList.add('hidden');
+	            document.getElementById('fbConfirmedBadge').classList.remove('hidden');
+	            document.getElementById('fbReferenceArea').classList.remove('hidden');
+	            document.getElementById('fbScoreArea').classList.remove('hidden');
+	          }
       }
       
       const judgmentsContainer = document.getElementById('fbQuestionJudgments');
-      fbJudgments = new Array(count).fill(null);
+	      const restoredJudgments = Array.isArray(fbJudgments) ? [...fbJudgments] : [];
+	      fbJudgments = new Array(count).fill(null);
       const offset = parseInt(currentPaper.questionCount) || 0;
       for (let i = 0; i < count; i++) {
         const pointsPerQuestion = currentPaper.fbPointsArray ? currentPaper.fbPointsArray[i] : parseInt(currentPaper.fillInBlankPoints || 0);
+	        const restoredScore = restoredJudgments[i] !== null && restoredJudgments[i] !== undefined ? restoredJudgments[i] : 0;
         const item = document.createElement('div'); item.className = 'border rounded p-3 bg-gray-50';
-        item.innerHTML = `<div class="flex justify-between items-center mb-2"><span class="font-medium text-gray-700">第 ${offset + i + 1} 题 (满分${pointsPerQuestion}分)</span></div><div class="flex items-center space-x-2"><input type="number" class="fb-score-input w-20 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-primary/50 text-center font-bold text-gray-700" min="0" max="${pointsPerQuestion}" step="0.5" value="0" data-index="${i}"></div>`;
-        judgmentsContainer.appendChild(item); fbJudgments[i] = 0;
+	        item.innerHTML = `<div class="flex justify-between items-center mb-2"><span class="font-medium text-gray-700">第 ${offset + i + 1} 题 (满分${pointsPerQuestion}分)</span>${lockedFillBlank ? '<span class="text-xs text-gray-500"><i class="fa fa-lock mr-1"></i>已提交</span>' : ''}</div><div class="flex items-center space-x-2"><input type="number" class="fb-score-input w-20 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-primary/50 text-center font-bold ${lockedFillBlank ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'text-gray-700'}" min="0" max="${pointsPerQuestion}" step="0.5" value="${restoredScore}" data-index="${i}" ${lockedFillBlank ? 'disabled' : ''}></div>`;
+	        judgmentsContainer.appendChild(item); fbJudgments[i] = Number(restoredScore) || 0;
       }
       judgmentsContainer.addEventListener('input', function (e) {
         const input = e.target.closest('.fb-score-input'); if (!input) return;
         const index = parseInt(input.dataset.index); let val = parseFloat(input.value); const max = parseFloat(input.max), min = parseFloat(input.min);
         if (isNaN(val)) val = 0; if (val > max) { val = max; input.value = max; } if (val < min) { val = min; input.value = min; }
         fbJudgments[index] = val; calculateFbScore();
-      }); fbSelfScore = 0; fbIsConfirmed = false;
+	      });
+	      calculateFbScore();
     }
 
     function calculateFbScore() { if (!fbJudgments) return; let total = 0; fbJudgments.forEach(val => { if (typeof val === 'number') total += val; }); fbSelfScore = total; const display = document.getElementById('fbCurrentScoreDisplay'), count = currentPaper.fillInBlankCount || 0, maxTotal = currentPaper.fbPointsArray ? currentPaper.fbPointsArray.reduce((a,b)=>a+b,0) : (count * parseInt(currentPaper.fillInBlankPoints || 0)); if (display) display.textContent = `当前得分: ${fbSelfScore} / ${maxTotal}`; }
@@ -3679,7 +3735,7 @@
     function confirmUpload() { if (!uploadedFbImages || uploadedFbImages.length === 0) return; if (!confirm('确认提交这些答题卡吗？确认后将显示参考答案且无法再修改图片。')) return; fbIsConfirmed = true; document.getElementById('fbActionButtons').classList.add('hidden'); document.getElementById('fbConfirmedBadge').classList.remove('hidden'); document.getElementById('fbReferenceArea').classList.remove('hidden'); document.getElementById('fbScoreArea').classList.remove('hidden'); }
     function getBase64(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.readAsDataURL(file); reader.onload = () => resolve(reader.result); reader.onerror = error => reject(error); }); }
     function generateQuestionNav() { questionNav.innerHTML = ''; for (let i = 0; i < currentPaper.questionCount; i++) { const navBtn = document.createElement('button'); navBtn.className = `w-8 h-8 rounded-full flex items-center justify-center text-sm ${i === 0 ? 'bg-primary text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`; navBtn.textContent = i + 1; navBtn.dataset.questionIndex = i; navBtn.addEventListener('click', function () { currentQuestionIndex = parseInt(this.dataset.questionIndex); renderCurrentQuestion(); updateNavButtons(); updateQuestionNavStyle(); }); questionNav.appendChild(navBtn); } }
-    function updateQuestionNavStyle() { questionNav.querySelectorAll('button').forEach((btn, index) => { if (index === currentQuestionIndex) btn.className = 'w-8 h-8 rounded-full flex items-center justify-center text-sm bg-primary text-white'; else if (studentAnswers[index] !== null) btn.className = 'w-8 h-8 rounded-full flex items-center justify-center text-sm bg-green-100 text-green-700'; else btn.className = 'w-8 h-8 rounded-full flex items-center justify-center text-sm bg-gray-200 text-gray-700 hover:bg-gray-300'; }); }
+    function updateQuestionNavStyle() { questionNav.querySelectorAll('button').forEach((btn, index) => { if (index === currentQuestionIndex) btn.className = lockedAnswerIndexes.has(index) ? 'w-8 h-8 rounded-full flex items-center justify-center text-sm bg-gray-500 text-white' : 'w-8 h-8 rounded-full flex items-center justify-center text-sm bg-primary text-white'; else if (lockedAnswerIndexes.has(index)) btn.className = 'w-8 h-8 rounded-full flex items-center justify-center text-sm bg-gray-200 text-gray-500 border border-gray-300'; else if (studentAnswers[index] !== null) btn.className = 'w-8 h-8 rounded-full flex items-center justify-center text-sm bg-green-100 text-green-700'; else btn.className = 'w-8 h-8 rounded-full flex items-center justify-center text-sm bg-gray-200 text-gray-700 hover:bg-gray-300'; }); }
     function renderCurrentQuestion() { 
       const questionNumber = currentQuestionIndex + 1; 
       const qtype = currentPaper.questionTypes && currentPaper.questionTypes[currentQuestionIndex] ? currentPaper.questionTypes[currentQuestionIndex] : 'single';
@@ -3694,6 +3750,7 @@
         : `<p class="text-gray-500 text-xs mt-1">本题分值: ${currentPaper.singlePoints}分</p>`;
         
       const currentAns = studentAnswers[currentQuestionIndex] || '';
+	      const isLocked = lockedAnswerIndexes.has(currentQuestionIndex);
       
       questionContent.innerHTML = `
         <div class="mb-4">
@@ -3706,10 +3763,10 @@
         <div class="space-y-2 mt-4" style="display: flex;justify-content: space-between;gap: 50px;">
           ${["A","B","C","D"].map(key => {
             const isSelected = isMultiple ? currentAns.includes(key) : currentAns === key;
-            const containerClass = isSelected ? 'bg-primary/10 border-primary/30' : '';
+	            const containerClass = isLocked ? 'bg-gray-100 border-gray-300 opacity-70 cursor-not-allowed' : (isSelected ? 'bg-primary/10 border-primary/30' : '');
             const indicatorShape = isMultiple ? 'rounded' : 'rounded-full';
             const indicatorBg = isSelected ? 'bg-primary border-primary text-white' : 'border-gray-300';
-            return `
+	            return `
               <div class="option-item p-3 border rounded-lg cursor-pointer ${containerClass}" data-option="${key}" gotonext style="flex:1;display: flex;align-items: center;justify-content: center;margin-top: 0">
                 <div class="flex items-center">
                   <div class="w-6 h-6 ${indicatorShape} border ${indicatorBg} flex items-center justify-center text-xs font-bold">
@@ -3720,9 +3777,11 @@
             `;
           }).join('')}
         </div>
+	        ${isLocked ? '<p class="mt-3 text-sm text-gray-500"><i class="fa fa-lock mr-1"></i>此题已在上次提交中作答，不可修改</p>' : ''}
       `; 
       
       questionContent.querySelectorAll('.option-item').forEach(option => { 
+	        if (isLocked) return;
         option.addEventListener('click', function () { 
           const opt = this.dataset.option;
           if (isMultiple) {
@@ -3755,14 +3814,24 @@
         submitAllBtn.disabled = true;
         submitAllBtn.textContent = '已截止';
       } else {
-        submitAllBtn.disabled = 
-          (currentPaper.questionCount > 0 && !studentAnswers.every(answer => answer !== null)) || 
-          (currentPaper.fillInBlankCount > 0 && uploadedFbImages.length === 0);
+	        submitAllBtn.disabled = false;
       }
       updateQuestionNavStyle(); 
     }
     function goToPrevQuestion() { if (currentQuestionIndex > 0) { currentQuestionIndex--; renderCurrentQuestion(); updateNavButtons(); } }
     function goToNextQuestion() { if (currentQuestionIndex < currentPaper.questionCount - 1) { currentQuestionIndex++; renderCurrentQuestion(); updateNavButtons(); } }
+
+	    function isCurrentPaperFullyAnswered() {
+	      const choiceComplete = currentPaper.questionCount === 0 || studentAnswers.every(answer => answer !== null && answer !== undefined && String(answer).trim() !== '');
+	      const fillComplete = !currentPaper.fillInBlankCount || (
+	        uploadedFbImages.length > 0 &&
+	        fbIsConfirmed &&
+	        Array.isArray(fbJudgments) &&
+	        fbJudgments.length >= currentPaper.fillInBlankCount &&
+	        fbJudgments.slice(0, currentPaper.fillInBlankCount).every(value => value !== null && value !== undefined && value !== '')
+	      );
+	      return choiceComplete && fillComplete;
+	    }
 
     async function submitAllAnswers() {
       if (isPaperExpired(currentPaper)) {
@@ -3771,12 +3840,10 @@
         submitAllBtn.textContent = '已截止';
         return;
       }
-      if (currentPaper.fillInBlankCount > 0) {
-        if (!uploadedFbImages || uploadedFbImages.length === 0) return alert('请上传至少一张填空题答题卡照片') || document.getElementById('fillBlankSection').scrollIntoView({ behavior: 'smooth' });
-        if (!fbIsConfirmed) return alert('请先确认您的答题卡照片，以便显示参考答案进行自评') || document.getElementById('fillBlankSection').scrollIntoView({ behavior: 'smooth' });
-        if (!fbJudgments || fbJudgments.includes(null)) return alert('请为每一道填空题判断对错 (输入得分)') || document.getElementById('fillBlankSection').scrollIntoView({ behavior: 'smooth' });
-      }
-      if (!confirm(`确定要提交所有答案吗？提交后将无法修改。`)) return;
+	      const submissionStatus = isCurrentPaperFullyAnswered() ? 1 : 0;
+	      if (submissionStatus === 0) {
+	        if (!confirm('部分作答套卷会被标记为部分完成，后续可继续作答')) return;
+	      } else if (!confirm(`确定要提交所有答案吗？提交后将无法修改。`)) return;
 
       submitAllBtn.disabled = true; submitAllBtn.innerHTML = '<i class="fa fa-spinner fa-spin mr-2"></i> 正在极速交卷中...';
       stopTimer();
@@ -3800,14 +3867,13 @@
           }); 
       }
       if (currentPaper.fillInBlankCount > 0) score += (fbSelfScore || 0);
-      const previousRecords = studentAllRecords.filter(a => a.paperId === currentPaper.id && a.studentId === studentInfo.id);
+	      const previousRecords = studentAllRecords.filter(a => a.paperId === currentPaper.id && a.studentId === studentInfo.id);
       const isFirstSubmission = previousRecords.length === 0;
       const previousBestScore = previousRecords.reduce((best, item) => Math.max(best, getRecordTotalScore(item, currentPaper)), 0);
       // 🚀 核心升级：将多图数组传给服务器
       const input = document.getElementById('timerRecommendedInput');
       const finalRecommendedMinutes = parseInt(input.value, 10) || 60;
-      const answerRecord = { paperId: currentPaper.id, studentId: studentInfo.id, studentName: studentInfo.name, answers: studentAnswers, score: score, totalPoints: currentPaper.totalPoints, timeElapsed: secondsElapsed, isFirstSubmission: isFirstSubmission, fillInBlankStudentImage: uploadedFbImages, fillInBlankScore: fbSelfScore || 0, fillInBlankDetails: fbJudgments, draftImages: uploadedDraftImages, submitTime: new Date().toLocaleString(), recommendedTime: finalRecommendedMinutes, interimEvents: interimEvents, actualTimeElapsed: secondsElapsed };
-      allAnswerRecords.push(answerRecord); 
+	      const answerRecord = { paperId: currentPaper.id, studentId: studentInfo.id, studentName: studentInfo.name, answers: studentAnswers, score: score, totalPoints: currentPaper.totalPoints, timeElapsed: secondsElapsed, status: submissionStatus, isFirstSubmission: isFirstSubmission, fillInBlankStudentImage: uploadedFbImages, fillInBlankConfirmed: fbIsConfirmed, fillInBlankScore: fbSelfScore || 0, fillInBlankDetails: fbJudgments, draftImages: uploadedDraftImages, submitTime: new Date().toLocaleString(), recommendedTime: finalRecommendedMinutes, interimEvents: interimEvents, actualTimeElapsed: secondsElapsed };
       try {
           await fetchJson(`/api/v1/papers/${currentPaper.id}/submissions`, answerRecord,'POST');
           localStorage.removeItem('draft_' + currentPaper.id);
@@ -3825,6 +3891,12 @@
           } else {
               message = `本次得分 ${score} 分，未超过历史最高分 ${previousBestScore} 分，积分不变。`;
           }
+	          if (submissionStatus === 0) {
+	              closeAnswerModal();
+	              showGeneralModal('部分完成', `本次部分作答得分 ${score} 分，已计入成绩与数据统计。${message} 后续可继续作答。`, 'success');
+	              init();
+	              return;
+	          }
           closeAnswerModal(); 
           showScoreDetailModal(score, currentPaper.totalPoints, scoreDetails, message, secondsElapsed); 
           init()

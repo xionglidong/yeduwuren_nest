@@ -77,6 +77,7 @@ model StudentAnswer {
   submitTime        String
   timeElapsed       Int?
   isFirstSubmission Boolean  @default(true)
+  status            Int      @default(1) // 0: partial, 1: complete
   tag               String?  // optional admin tag/note
   options           String?  // JSON String for extra fields (fillInBlankDetails, interimEvents, etc.)
   createdAt         DateTime @default(now())

@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsArray, IsOptional, IsNumber } from 'class-validator';
+import { IsString, IsNotEmpty, IsArray, IsOptional, IsNumber, IsInt, Min, Max } from 'class-validator';
 
 export class SubmitPaperDto {
   @IsString()
@@ -32,11 +32,20 @@ export class SubmitPaperDto {
   @IsOptional()
   timeElapsed?: number;
 
+  @IsInt()
+  @Min(0)
+  @Max(1)
+  @IsOptional()
+  status?: number;
+
   @IsOptional()
   fillInBlankDetails?: unknown;
 
   @IsOptional()
   fillInBlankStudentImage?: unknown;
+
+  @IsOptional()
+  fillInBlankConfirmed?: unknown;
 
   @IsOptional()
   fillInBlankScore?: unknown;

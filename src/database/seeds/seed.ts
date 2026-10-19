@@ -160,7 +160,7 @@ async function main(): Promise<void> {
   // 4. Seed Student Submissions / Answers
   const STUDENT_ANSWER_DIRECT_FIELDS = new Set([
     'id', 'paperId', 'studentId', 'studentName', 'answers', 'score',
-    'totalPoints', 'submitTime', 'timeElapsed', 'isFirstSubmission', 'tag', 'createdAt',
+    'totalPoints', 'submitTime', 'timeElapsed', 'isFirstSubmission', 'status', 'tag', 'createdAt',
   ]);
 
   function packStudentAnswerForSeed(row: Record<string, unknown>): {
@@ -173,6 +173,7 @@ async function main(): Promise<void> {
     submitTime: string;
     timeElapsed: number | null;
     isFirstSubmission: boolean;
+    status: number;
     tag: string | null;
     options: string | null;
   } {
@@ -223,6 +224,7 @@ async function main(): Promise<void> {
       submitTime: String(row['submitTime'] ?? new Date().toISOString()),
       timeElapsed: row['timeElapsed'] !== null && row['timeElapsed'] !== undefined ? Number(row['timeElapsed']) : null,
       isFirstSubmission: Boolean(row['isFirstSubmission'] !== 0 && row['isFirstSubmission'] !== false),
+      status: Number(row['status']) === 0 ? 0 : 1,
       tag: row['tag'] ? String(row['tag']) : (row['tags'] ? String(row['tags']) : null),
       options: Object.keys(opts).length > 0 ? JSON.stringify(opts) : null,
     };
@@ -267,7 +269,7 @@ async function main(): Promise<void> {
         } else {
           await prisma.studentAnswer.update({
             where: { id: existing.id },
-            data: { options: data.options },
+            data: { options: data.options, status: data.status },
           });
         }
       }

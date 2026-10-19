@@ -196,11 +196,14 @@ export class PaperRepository {
     score: number,
     totalPoints: number,
     isFirstSubmission: boolean,
+    status: number,
+    existingPartialId?: string,
   ): Promise<StudentAnswer> {
     const submitTimeStr = dto.submitTime || new Date().toISOString().replace('T', ' ').substring(0, 19);
     const optionsObj: Record<string, unknown> = {};
     if (dto.fillInBlankDetails !== undefined) optionsObj['fillInBlankDetails'] = dto.fillInBlankDetails;
     if (dto.fillInBlankStudentImage !== undefined) optionsObj['fillInBlankStudentImage'] = dto.fillInBlankStudentImage;
+    if (dto.fillInBlankConfirmed !== undefined) optionsObj['fillInBlankConfirmed'] = dto.fillInBlankConfirmed;
     if (dto.fillInBlankScore !== undefined) optionsObj['fillInBlankScore'] = dto.fillInBlankScore;
     if (dto.draftImages !== undefined) optionsObj['draftImages'] = dto.draftImages;
     if (dto.correctionImages !== undefined) optionsObj['correctionImages'] = dto.correctionImages;
@@ -212,20 +215,28 @@ export class PaperRepository {
     if (dto.pauseCount !== undefined) optionsObj['pauseCount'] = dto.pauseCount;
     if (dto.pauseIntervals !== undefined) optionsObj['pauseIntervals'] = dto.pauseIntervals;
 
-    return this.prisma.studentAnswer.create({
-      data: {
-        paperId: dto.paperId,
-        studentId: dto.studentId,
-        studentName: dto.studentName,
-        answers: JSON.stringify(dto.answers),
-        score,
-        totalPoints,
-        submitTime: submitTimeStr,
-        timeElapsed: dto.timeElapsed ?? null,
-        isFirstSubmission,
-        options: Object.keys(optionsObj).length > 0 ? JSON.stringify(optionsObj) : null,
-      },
-    });
+    const data = {
+      paperId: dto.paperId,
+      studentId: dto.studentId,
+      studentName: dto.studentName,
+      answers: JSON.stringify(dto.answers),
+      score,
+      totalPoints,
+      submitTime: submitTimeStr,
+      timeElapsed: dto.timeElapsed ?? null,
+      isFirstSubmission,
+      status,
+      options: Object.keys(optionsObj).length > 0 ? JSON.stringify(optionsObj) : null,
+    };
+
+    if (existingPartialId) {
+      return this.prisma.studentAnswer.update({
+        where: { id: existingPartialId },
+        data,
+      });
+    }
+
+    return this.prisma.studentAnswer.create({ data });
   }
 
   async findSubmissionById(id: string): Promise<StudentAnswer | null> {
@@ -244,7 +255,7 @@ export class PaperRepository {
       try { existingOptions = JSON.parse(existing.options); } catch { existingOptions = {}; }
     }
 
-    const directFields = ['answers', 'score', 'totalPoints', 'submitTime', 'timeElapsed', 'isFirstSubmission', 'tag'];
+    const directFields = ['answers', 'score', 'totalPoints', 'submitTime', 'timeElapsed', 'isFirstSubmission', 'status', 'tag'];
     const updatePayload: Record<string, unknown> = {};
 
     for (const key of Object.keys(data)) {

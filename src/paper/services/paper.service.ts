@@ -15,6 +15,7 @@ export interface FormattedStudentAnswer {
   submitTime: string;
   timeElapsed?: number;
   isFirstSubmission: boolean;
+  status: number;
   tag?: string;
   [key: string]: unknown;
 }
@@ -71,6 +72,33 @@ export class PaperService {
 
   async submitPaper(dto: SubmitPaperDto): Promise<StudentAnswer> {
     const paper = await this.paperRepository.findPaperById(dto.paperId);
+    const previousSubmissions = await this.paperRepository.findSubmissionsByStudent(dto.studentId);
+    const paperSubmissions = previousSubmissions.filter((s) => s.paperId === dto.paperId);
+    const existingPartial = paperSubmissions.find((s) => s.status === 0);
+
+    if (existingPartial) {
+      try {
+        const persistedAnswers = JSON.parse(existingPartial.answers) as unknown[];
+        dto.answers = dto.answers.map((answer, index) => {
+          const persisted = persistedAnswers[index];
+          return persisted !== null && persisted !== undefined && String(persisted).trim() !== ''
+            ? String(persisted)
+            : answer;
+        });
+      } catch {}
+
+      if (existingPartial.options) {
+        try {
+          const persistedOptions = JSON.parse(existingPartial.options) as Record<string, unknown>;
+          if (persistedOptions['fillInBlankConfirmed'] === true) {
+            dto.fillInBlankConfirmed = true;
+            dto.fillInBlankStudentImage = persistedOptions['fillInBlankStudentImage'];
+            dto.fillInBlankDetails = persistedOptions['fillInBlankDetails'];
+            dto.fillInBlankScore = persistedOptions['fillInBlankScore'];
+          }
+        } catch {}
+      }
+    }
 
     let calculatedScore = dto.score ?? 0;
     let totalPoints = dto.totalPoints ?? (paper ? paper.totalPoints : 100);
@@ -116,12 +144,12 @@ export class PaperService {
     }
 
     const finalScore = typeof dto.score === 'number' ? dto.score : calculatedScore;
+    const status = this.calculateSubmissionStatus(dto, paper);
 
     // Calculate previous best score for this student & paper to determine pointsGain
-    const previousSubmissions = await this.paperRepository.findSubmissionsByStudent(dto.studentId);
-    const paperSubmissions = previousSubmissions.filter((s) => s.paperId === dto.paperId);
-    const previousCount = paperSubmissions.length;
-    const isFirstSubmission = previousCount === 0;
+    const isFirstSubmission = existingPartial
+      ? existingPartial.isFirstSubmission
+      : paperSubmissions.length === 0;
 
     const previousBestScore = paperSubmissions.reduce((best, s) => Math.max(best, s.score), 0);
     const bestScoreAfter = Math.max(previousBestScore, finalScore);
@@ -142,7 +170,14 @@ export class PaperService {
       }
     }
 
-    return this.paperRepository.createSubmission(dto, finalScore, totalPoints, isFirstSubmission);
+    return this.paperRepository.createSubmission(
+      dto,
+      finalScore,
+      totalPoints,
+      isFirstSubmission,
+      status,
+      existingPartial?.id,
+    );
   }
 
   async getAllSubmissions(): Promise<FormattedStudentAnswer[]> {
@@ -291,8 +326,49 @@ export class PaperService {
       submitTime: r.submitTime,
       timeElapsed: r.timeElapsed ?? undefined,
       isFirstSubmission: r.isFirstSubmission,
+      status: r.status,
       tag: r.tag ?? undefined,
       ...parsedOptions,
     };
+  }
+
+  private calculateSubmissionStatus(dto: SubmitPaperDto, paper: Paper | null): number {
+    const requestedComplete = dto.status === undefined || dto.status === 1;
+    if (!paper) return requestedComplete ? 1 : 0;
+
+    const choiceComplete = Array.from({ length: paper.questionCount }).every((_, index) => {
+      const answer = dto.answers[index];
+      return typeof answer === 'string' && answer.trim().length > 0;
+    });
+
+    let fillInBlankCount = 0;
+    if (paper.fillInBlankConfig) {
+      try {
+        const config = JSON.parse(paper.fillInBlankConfig);
+        if (Array.isArray(config)) fillInBlankCount = config.length;
+      } catch {}
+    }
+
+    if (fillInBlankCount === 0 && paper.options) {
+      try {
+        const options = JSON.parse(paper.options) as Record<string, unknown>;
+        fillInBlankCount = Number(options['fillInBlankCount'] ?? 0) || 0;
+      } catch {}
+    }
+
+    const images = Array.isArray(dto.fillInBlankStudentImage)
+      ? dto.fillInBlankStudentImage
+      : dto.fillInBlankStudentImage
+        ? [dto.fillInBlankStudentImage]
+        : [];
+    const details = Array.isArray(dto.fillInBlankDetails) ? dto.fillInBlankDetails : [];
+    const fillInBlankComplete = fillInBlankCount === 0 || (
+      dto.fillInBlankConfirmed === true &&
+      images.length > 0 &&
+      details.length >= fillInBlankCount &&
+      details.slice(0, fillInBlankCount).every((value) => value !== null && value !== undefined && value !== '')
+    );
+
+    return requestedComplete && choiceComplete && fillInBlankComplete ? 1 : 0;
   }
 }
