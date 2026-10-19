@@ -530,49 +530,6 @@
       </div>
 
       <div id="student" class="tab-pane hidden fade-in">
-        <!-- 学习力公式配置 Card -->
-        <div class="bg-white rounded-xl shadow-md p-6 mb-8">
-            <h3 class="text-lg font-bold text-gray-800 mb-2 flex items-center">
-              <i class="fa fa-calculator text-indigo-600 mr-2"></i> 学习力换算规则配置
-            </h3>
-            <p class="text-sm text-gray-500 mb-4">
-              设置各项指标换算为 <b>1 学习力</b> 所需的数据量（学习力最大值为 <b>100</b>，课上测试与课后作业贡献比为 <b>7:3</b>）：
-            </p>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <label class="block text-xs font-bold text-gray-600 mb-1">每多少积分 = 1 学习力</label>
-                <div class="flex items-center">
-                  <input type="number" step="1" min="1" id="cPointsInput" class="w-full px-3 py-1.5 border rounded-lg text-sm" placeholder="500">
-                  <span class="ml-1.5 text-xs font-bold text-gray-500 whitespace-nowrap">分</span>
-                </div>
-              </div>
-              <div>
-                <label class="block text-xs font-bold text-gray-600 mb-1">每多少 % 正确率 = 1 学习力</label>
-                <div class="flex items-center">
-                  <input type="number" step="0.1" min="0.1" id="cAccuracyInput" class="w-full px-3 py-1.5 border rounded-lg text-sm" placeholder="2">
-                  <span class="ml-1.5 text-xs font-bold text-gray-500 whitespace-nowrap">%</span>
-                </div>
-              </div>
-              <div>
-                <label class="block text-xs font-bold text-gray-600 mb-1">每多少小时时长 = 1 学习力</label>
-                <div class="flex items-center">
-                  <input type="number" step="0.5" min="0.1" id="cDurationInput" class="w-full px-3 py-1.5 border rounded-lg text-sm" placeholder="10">
-                  <span class="ml-1.5 text-xs font-bold text-gray-500 whitespace-nowrap">h</span>
-                </div>
-              </div>
-              <div>
-                <label class="block text-xs font-bold text-gray-600 mb-1">每多少题做题数 = 1 学习力</label>
-                <div class="flex items-center">
-                  <input type="number" step="1" min="1" id="cQuestionsInput" class="w-full px-3 py-1.5 border rounded-lg text-sm" placeholder="200">
-                  <span class="ml-1.5 text-xs font-bold text-gray-500 whitespace-nowrap">题</span>
-                </div>
-              </div>
-            </div>
-            <div class="mt-4 flex justify-end">
-              <button id="saveFormulaBtn" class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/95 text-sm font-bold shadow-md"><i class="fa fa-save mr-1.5"></i>保存配置并重新计算所有学生学习力</button>
-            </div>
-        </div>
-
         <!-- 阶段目标预测时间范围 Card -->
         <div class="bg-white rounded-xl shadow-md p-6 mb-8">
             <h3 class="text-lg font-bold text-gray-800 mb-2 flex items-center">
@@ -1424,7 +1381,6 @@
     let g_papers = [];
     let g_records = [];
     let g_map = {};
-    let g_formula = {}
     let g_predictionRange = {}
     let g_predictionNextNodeLabel = '预测'
     async function init() {
@@ -1483,12 +1439,6 @@
         fetch(`/api/v1/papers/submissions/records`).then(r => r.json()).then(res => res || []),
         fetch(`/api/v1/papers/categories/list`).then(r => r.json()).then(res => res || []),
         fetch(`/api/v1/students/map`).then(r => r.json()).then(res => res || {}),
-        fetch(`/api/v1/config/learningPowerFormula`).then(r => r.json()).then(res => res || {
-          cPoints: 500,
-          cAccuracy: 2,
-          cDuration: 10,
-          cQuestions: 200
-        }),
         fetch(`/api/v1/config/predictionTimeRange`).then(r => r.json()).then(res => res || { startDate: '', endDate: '' }),
         fetch(`/api/v1/config/predictionNextNodeLabel`).then(r => r.json()).then(res => typeof res === 'string' ? res : ''),
       ]).then(res => {
@@ -1496,9 +1446,8 @@
         g_records = res[1]
         g_categories = res[2]
         g_map = res[3]
-        g_formula = res[4]
-        g_predictionRange = res[5]
-        g_predictionNextNodeLabel = res[6] || '预测'
+        g_predictionRange = res[4]
+        g_predictionNextNodeLabel = res[5] || '预测'
 
         generateAnswerSelects();
       
@@ -1664,7 +1613,10 @@
         tabButtons.forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
         initPrizeManagement(); 
 
-        recalculateAllStudentsLearningPower(g_formula);
+        recalculateAllStudentsLearningPower().then(() => {
+          loadStudentPointsList();
+          loadRankingData();
+        });
         
         initStudentManagement(); 
         initGlobalSchoolYear(); 
@@ -5568,59 +5520,14 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
       };
     }
 
-    async function recalculateAllStudentsLearningPower(formula) {
-      // 调用后端批量重新计算接口，不再前端循环调用
-      await fetch(`/api/v1/students/recalculate-learning-power`, {
+    async function recalculateAllStudentsLearningPower() {
+      // 学习力 = 预测分数 × 预测成功率
+      const result = await fetch(`/api/v1/students/recalculate-learning-power`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formula)
-      });
-    }
-
-    async function initFormulaSection() {
-      const cPointsInput = document.getElementById('cPointsInput');
-      const cAccuracyInput = document.getElementById('cAccuracyInput');
-      const cDurationInput = document.getElementById('cDurationInput');
-      const cQuestionsInput = document.getElementById('cQuestionsInput');
-      const saveFormulaBtn = document.getElementById('saveFormulaBtn');
-      
-      if (!cPointsInput || !cAccuracyInput || !cDurationInput || !cQuestionsInput || !saveFormulaBtn) return;
-      
-      const formula = g_formula
-
-      cPointsInput.value = formula.cPoints ?? 500;
-      cAccuracyInput.value = formula.cAccuracy ?? 2;
-      cDurationInput.value = formula.cDuration ?? 10;
-      cQuestionsInput.value = formula.cQuestions ?? 200;
-      
-      saveFormulaBtn.addEventListener('click', async () => {
-        const cPoints = parseFloat(cPointsInput.value);
-        const cAccuracy = parseFloat(cAccuracyInput.value);
-        const cDuration = parseFloat(cDurationInput.value);
-        const cQuestions = parseFloat(cQuestionsInput.value);
-        
-        if (isNaN(cPoints) || cPoints <= 0 ||
-            isNaN(cAccuracy) || cAccuracy <= 0 ||
-            isNaN(cDuration) || cDuration <= 0 ||
-            isNaN(cQuestions) || cQuestions <= 0) {
-          return alert('请为所有换算指标输入大于 0 的有效数值！');
-        }
-        
-        const newFormula = { cPoints, cAccuracy, cDuration, cQuestions };
-        await fetch(`/api/v1/config/learningPowerFormula`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: newFormula }) });
-        
-        saveFormulaBtn.disabled = true;
-        saveFormulaBtn.innerHTML = '<i class="fa fa-spinner fa-spin mr-1.5"></i>重新计算中...';
-        
-        await recalculateAllStudentsLearningPower(newFormula);
-        
-        saveFormulaBtn.disabled = false;
-        saveFormulaBtn.innerHTML = '<i class="fa fa-save mr-1.5"></i>保存配置并重新计算所有学生学习力';
-        
-        alert('配置保存成功，所有学生学习力已更新！');
-        loadStudentPointsList();
-        loadRankingData();
-      });
+        headers: { 'Content-Type': 'application/json' }
+      }).then((response) => response.json());
+      if (result && result.students) g_map = result.students;
+      return result;
     }
 
     async function initPredictionRangeSection() {
@@ -5652,12 +5559,14 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
         });
         g_predictionRange = { startDate, endDate };
         g_predictionNextNodeLabel = nextNodeLabel;
-        alert('预测配置保存成功！');
+        await recalculateAllStudentsLearningPower();
+        loadStudentPointsList();
+        loadRankingData();
+        alert('预测配置保存成功，已按“预测分数 × 预测成功率”更新学习力！');
       });
     }
 
     function initStudentManagement() {
-       initFormulaSection();
        initPredictionRangeSection();
        loadStudentPointsList();
         exportStudentsBtn.addEventListener('click', exportStudentData); 
@@ -6227,8 +6136,6 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
       if (studentGaokaoScoreInput.value && (isNaN(gaokaoScore) || gaokaoScore < 0)) return alert('请输入有效的高考分数');
       if (isNaN(points) || points < 0) return alert('请输入有效的积分');
       
-      const formula = g_formula
-      
       const studentPoints = g_map;
       if (isEditingStudent) {
         if (studentPoints[id]) {
@@ -6242,7 +6149,7 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
             lastUpdate: new Date().toLocaleString() + ' (Admin Edit)'
           };
           await fetch(`/api/v1/students/${id}/points`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(studentData) });
-          await recalculateAllStudentsLearningPower(formula);
+          await recalculateAllStudentsLearningPower();
           alert('更新成功');
           loadStudentPointsList();
           closeStudentModal();
@@ -6259,7 +6166,7 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
           lastUpdate: new Date().toLocaleString() + ' (Created)'
         };
         await fetch(`/api/v1/students/${id}/points`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(studentData) });
-        await recalculateAllStudentsLearningPower(formula);
+        await recalculateAllStudentsLearningPower();
         alert('添加成功');
         loadStudentPointsList();
         closeStudentModal();

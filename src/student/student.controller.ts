@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Post, Delete, Param, Body, BadRequestException, HttpCode, HttpStatus, Query, UsePipes, ValidationPipe } from '@nestjs/common';
+import { Controller, Get, Put, Post, Delete, Param, Body, HttpCode, HttpStatus, Query, UsePipes, ValidationPipe } from '@nestjs/common';
 import { StudentService } from './student.service';
 import { Student } from '@prisma/client';
 import { UpdateStudentPointsDto } from './dto/update-student-points.dto';
@@ -42,19 +42,8 @@ export class StudentController {
   }
 
   @Post('recalculate-learning-power')
-  async recalculateLearningPower(
-    @Body() body: { cPoints: number; cAccuracy: number; cDuration: number; cQuestions: number },
-  ) {
-    const { cPoints, cAccuracy, cDuration, cQuestions } = body;
-    if (
-      typeof cPoints !== 'number' || isNaN(cPoints) || cPoints <= 0 ||
-      typeof cAccuracy !== 'number' || isNaN(cAccuracy) || cAccuracy <= 0 ||
-      typeof cDuration !== 'number' || isNaN(cDuration) || cDuration <= 0 ||
-      typeof cQuestions !== 'number' || isNaN(cQuestions) || cQuestions <= 0
-    ) {
-      throw new BadRequestException('All parameters (cPoints, cAccuracy, cDuration, cQuestions) must be numbers greater than 0');
-    }
-    return this.studentService.recalculateLearningPower(body);
+  async recalculateLearningPower() {
+    return this.studentService.recalculateLearningPower();
   }
 
   @Put(':id/points')

@@ -1,7 +1,6 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { ConfigStoreService } from '../config-store/config-store.service';
-import { PaperRepository } from '../paper/repositories/paper.repository';
-import { StudentRepository } from '../student/student.repository';
+import { PrismaService } from '../database/prisma.service';
 
 export interface KnowledgePointScore {
   name: string;
@@ -93,9 +92,8 @@ interface NodeAgg {
 @Injectable()
 export class PredictionService {
   constructor(
-    private readonly paperRepository: PaperRepository,
     private readonly configStore: ConfigStoreService,
-    private readonly studentRepository: StudentRepository,
+    private readonly prisma: PrismaService,
   ) {}
 
   async predictPhaseTarget(
@@ -177,13 +175,16 @@ export class PredictionService {
     rangeEnd.setHours(23, 59, 59, 999);
 
     // 3. Fetch data (all of this student's submissions, filtered in memory).
-    const allSubs = await this.paperRepository.findSubmissionsByStudent(studentId);
+    const allSubs = await this.prisma.studentAnswer.findMany({
+      where: { studentId },
+      orderBy: { createdAt: 'desc' },
+    });
     const submissions = allSubs.filter((sub) => {
       const dt = new Date(String(sub.submitTime || '').replace(/-/g, '/'));
       if (isNaN(dt.getTime())) return false;
       return dt >= rangeStart && dt <= rangeEnd;
     });
-    const papers = await this.paperRepository.findAllPapers();
+    const papers = await this.prisma.paper.findMany({ orderBy: { createdAt: 'desc' } });
 
     // 4. Build paper map.
     const paperMap = new Map<string, ParsedPaper>();
@@ -336,7 +337,7 @@ export class PredictionService {
     }
 
     // 5b. Incorporate school scores that fall within the prediction range.
-    const student = await this.studentRepository.findById(studentId);
+    const student = await this.prisma.student.findUnique({ where: { id: studentId } });
     const schoolScores = this.safeParseJson<unknown[]>(student?.schoolScores, []);
 
     for (const raw of schoolScores) {
