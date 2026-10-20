@@ -73,6 +73,7 @@ model StudentAnswer {
   studentName       String
   answers           String   // JSON Array string
   score             Float
+  redoScore         Float?   // 重做得分；首次作答为 null
   totalPoints       Float
   submitTime        String
   timeElapsed       Int?
@@ -83,6 +84,15 @@ model StudentAnswer {
   createdAt         DateTime @default(now())
 
   @@map("student_answers")
+}
+
+model KnowledgePointTag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("knowledge_point_tags")
 }
 
 model TimerRecord {

@@ -159,7 +159,7 @@ async function main(): Promise<void> {
 
   // 4. Seed Student Submissions / Answers
   const STUDENT_ANSWER_DIRECT_FIELDS = new Set([
-    'id', 'paperId', 'studentId', 'studentName', 'answers', 'score',
+    'id', 'paperId', 'studentId', 'studentName', 'answers', 'score', 'redoScore',
     'totalPoints', 'submitTime', 'timeElapsed', 'isFirstSubmission', 'status', 'tag', 'createdAt',
   ]);
 
@@ -169,6 +169,7 @@ async function main(): Promise<void> {
     studentName: string;
     answers: string;
     score: number;
+    redoScore: number | null;
     totalPoints: number;
     submitTime: string;
     timeElapsed: number | null;
@@ -220,6 +221,9 @@ async function main(): Promise<void> {
       studentName: String(row['studentName'] ?? ''),
       answers: answersStr,
       score: Number(row['score'] ?? 0),
+      redoScore: row['redoScore'] !== null && row['redoScore'] !== undefined
+        ? Number(row['redoScore'])
+        : (row['isFirstSubmission'] === 0 || row['isFirstSubmission'] === false ? Number(row['score'] ?? 0) : null),
       totalPoints: Number(row['totalPoints'] ?? 100),
       submitTime: String(row['submitTime'] ?? new Date().toISOString()),
       timeElapsed: row['timeElapsed'] !== null && row['timeElapsed'] !== undefined ? Number(row['timeElapsed']) : null,

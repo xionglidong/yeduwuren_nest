@@ -3060,9 +3060,13 @@
           
 	          if (isPartial) {
 	            statusHtml = `<span class="ml-2 text-xs font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full whitespace-nowrap">部分完成 · 得分 ${getRecordTotalScore(latestRecord, paper)}/${paper.totalPoints}${expired ? ' · 已截止' : ''}</span>`;
-	            actionBtnHtml = expired
+	            const continueButton = expired
 	              ? `<button class="px-3 py-1.5 bg-gray-100 text-gray-400 text-xs font-bold rounded-lg cursor-not-allowed" disabled><i class="fa fa-lock mr-1"></i>已截止</button>`
 	              : `<button class="px-3 py-1.5 bg-amber-500 text-white text-xs font-bold rounded-lg hover:bg-amber-600 transition-all start-paper-btn" data-paper-id="${paper.id}"><i class="fa fa-pencil-square-o mr-1"></i>继续作答</button>`;
+	            actionBtnHtml = `<div class="flex gap-2 whitespace-nowrap">
+	              ${continueButton}
+	              <button class="px-3 py-1.5 bg-gray-150 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-200 transition-all view-detail-btn" data-paper-id="${paper.id}"><i class="fa fa-eye mr-1"></i>查看详情</button>
+	            </div>`;
 	          } else if (hasAnswered) {
             const latestDisplayScore = getRecordTotalScore(latestRecord, paper);
             let correctionBtnHtml = '';
@@ -3454,7 +3458,15 @@
         historyTimeDisplay.textContent = `${String(Math.floor(timeElapsed / 60)).padStart(2, '0')}:${String(timeElapsed % 60).padStart(2, '0')}`; 
         historyDetailsList.innerHTML = ''; 
         if (historyViewPdfBtn) { const pdfFile = paper && paper.pdfFile ? String(paper.pdfFile).trim() : ''; if (pdfFile) { historyViewPdfBtn.classList.remove('hidden'); historyViewPdfBtn.onclick = () => openPdfFile(pdfFile); } else { historyViewPdfBtn.classList.add('hidden'); historyViewPdfBtn.onclick = null; } }
-        latestRecord.answers.forEach((ans, i) => {
+        const isPartialRecord = latestRecord.status === 0;
+        const submittedChoiceAnswers = (Array.isArray(latestRecord.answers) ? latestRecord.answers : [])
+          .slice(0, paper.questionCount)
+          .map((answer, index) => ({ answer: answer && typeof answer === 'object' ? (answer.answer || '') : answer, index }))
+          .filter(({ answer }) => !isPartialRecord || (answer !== null && answer !== undefined && String(answer).trim() !== ''));
+        if (isPartialRecord && submittedChoiceAnswers.length === 0 && paper.questionCount > 0) {
+          historyDetailsList.innerHTML = '<div class="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-5 text-center text-sm text-gray-400">尚未提交选择题答案</div>';
+        }
+        submittedChoiceAnswers.forEach(({ answer: ans, index: i }) => {
           const isMultiple = paper.questionTypes && paper.questionTypes[i] === 'multiple';
           const standard = (typeof paper.answers[i] == "string" ? paper.answers[i] : paper.answers[i].answer) || '';
           const qInfo = getQuestionScore(ans, standard, isMultiple, paper.singlePoints);
@@ -3498,16 +3510,15 @@
         }); 
         
         // 🚀 核心升级：历史详情支持多图展示
-        if (latestRecord.fillInBlankStudentImage && paper.fillInBlankCount > 0) { 
+        const submittedFillInBlankImages = Array.isArray(latestRecord.fillInBlankStudentImage)
+          ? latestRecord.fillInBlankStudentImage.filter((url) => String(url || '').trim() !== '')
+          : (String(latestRecord.fillInBlankStudentImage || '').trim() ? [latestRecord.fillInBlankStudentImage] : []);
+        if (submittedFillInBlankImages.length > 0 && paper.fillInBlankCount > 0) {
             let fbVideosHtml = ''; if (paper.fillBlankVideos && paper.fillBlankVideos.some(v => v)) { fbVideosHtml = '<div class="mt-4 p-3 bg-indigo-50 rounded-lg border border-indigo-100"><h5 class="text-sm font-bold text-indigo-800 mb-2">填空题视频讲解</h5><div class="space-y-2">'; paper.fillBlankVideos.forEach((video, i) => { if (video) fbVideosHtml += `<div class="flex items-center space-x-2"><span class="text-xs font-medium text-gray-600 w-16">第 ${i + 1} 题:</span><button onclick="playExplanationVideo('./video/${video}', '第 ${i + 1} 道填空题讲解')" class="text-xs bg-white border border-indigo-200 text-indigo-700 px-3 py-1 rounded-full hover:bg-indigo-50 transition-colors flex items-center shadow-sm"><i class="fa fa-play-circle mr-1.5 text-indigo-600"></i> 观看视频</button></div>`; }); fbVideosHtml += '</div></div>'; } 
             let judgmentsHtml = ''; if (latestRecord.fillInBlankDetails && Array.isArray(latestRecord.fillInBlankDetails)) { judgmentsHtml = '<div class="mt-4"><h5 class="text-sm font-bold text-gray-600 mb-2">得分详情</h5><div class="grid grid-cols-3 md:grid-cols-5 gap-2">'; latestRecord.fillInBlankDetails.forEach((score, idx) => { let displayScore = typeof score === 'boolean' ? (score ? paper.fillInBlankPoints : 0) : score; let isFull = typeof score === 'boolean' ? score : (score >= paper.fillInBlankPoints); judgmentsHtml += `<div class="px-2 py-1.5 rounded border flex items-center justify-center space-x-1 ${isFull ? 'bg-green-50 border-green-200 text-green-700' : 'bg-orange-50 border-orange-200 text-orange-700'}"><span class="text-xs font-medium">题${idx + 1}:</span><span class="font-bold text-sm">${displayScore}分</span></div>`; }); judgmentsHtml += '</div></div>'; } 
             
          let stuImagesHtml = '';
-            if (Array.isArray(latestRecord.fillInBlankStudentImage)) {
-                stuImagesHtml = latestRecord.fillInBlankStudentImage.map(url => `<img src="${url}" class="w-full h-auto max-h-[300px] rounded object-contain cursor-pointer hover:opacity-90 mb-2" onclick="showImagePreview(this.src)" />`).join('');
-            } else {
-                stuImagesHtml = `<img src="${latestRecord.fillInBlankStudentImage}" class="w-full h-auto max-h-[300px] rounded object-contain cursor-pointer hover:opacity-90" onclick="showImagePreview(this.src)" />`;
-            }
+            stuImagesHtml = submittedFillInBlankImages.map(url => `<img src="${url}" class="w-full h-auto max-h-[300px] rounded object-contain cursor-pointer hover:opacity-90 mb-2" onclick="showImagePreview(this.src)" />`).join('');
 
             // 拆分逻辑，防止拼装HTML时出错
             let answerImagesHtml = '';

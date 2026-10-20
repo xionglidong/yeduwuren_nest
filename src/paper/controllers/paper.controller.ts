@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Put, Delete,
-  Param, Body, HttpCode, HttpStatus,
+  Param, Body, Query, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { PaperService, FormattedStudentAnswer } from '../services/paper.service';
 import { Paper, StudentAnswer } from '@prisma/client';
@@ -97,6 +97,32 @@ export class PaperController {
     @Param('submissionId') submissionId: string,
   ): Promise<void> {
     return this.paperService.deleteSubmission('', submissionId);
+  }
+
+  // ─── Knowledge point tags ────────────────────────────────────────────────
+
+  @Get('knowledge-tags/list')
+  async getKnowledgePointTags(@Query('keyword') keyword?: string): Promise<Record<string, unknown>[]> {
+    return this.paperService.getKnowledgePointTags(keyword);
+  }
+
+  @Post('knowledge-tags')
+  async createKnowledgePointTag(@Body() body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.paperService.createKnowledgePointTag(body);
+  }
+
+  @Put('knowledge-tags/:id')
+  async updateKnowledgePointTag(
+    @Param('id') id: string,
+    @Body() body: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    return this.paperService.updateKnowledgePointTag(id, body);
+  }
+
+  @Delete('knowledge-tags/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteKnowledgePointTag(@Param('id') id: string): Promise<void> {
+    return this.paperService.deleteKnowledgePointTag(id);
   }
 
   // ─── Paper by ID (must be last to avoid swallowing named sub-routes) ──────

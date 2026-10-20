@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
-import { Paper, StudentAnswer, PaperCategory } from '@prisma/client';
+import { Paper, StudentAnswer, PaperCategory, KnowledgePointTag } from '@prisma/client';
 import { SubmitPaperDto } from '../dto/submit-paper.dto';
 
 // Fields that Paper table stores directly (rest go into `options` JSON column)
@@ -221,6 +221,7 @@ export class PaperRepository {
       studentName: dto.studentName,
       answers: JSON.stringify(dto.answers),
       score,
+      redoScore: isFirstSubmission ? null : score,
       totalPoints,
       submitTime: submitTimeStr,
       timeElapsed: dto.timeElapsed ?? null,
@@ -255,7 +256,7 @@ export class PaperRepository {
       try { existingOptions = JSON.parse(existing.options); } catch { existingOptions = {}; }
     }
 
-    const directFields = ['answers', 'score', 'totalPoints', 'submitTime', 'timeElapsed', 'isFirstSubmission', 'status', 'tag'];
+    const directFields = ['answers', 'score', 'redoScore', 'totalPoints', 'submitTime', 'timeElapsed', 'isFirstSubmission', 'status', 'tag'];
     const updatePayload: Record<string, unknown> = {};
 
     for (const key of Object.keys(data)) {
@@ -339,6 +340,35 @@ export class PaperRepository {
 
   async deleteSubmission(id: string): Promise<void> {
     await this.prisma.studentAnswer.delete({ where: { id } });
+  }
+
+  // ─── Knowledge point tags ────────────────────────────────────────────────
+
+  async findKnowledgePointTags(keyword?: string): Promise<KnowledgePointTag[]> {
+    return this.prisma.knowledgePointTag.findMany({
+      where: keyword ? { name: { contains: keyword } } : undefined,
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async findKnowledgePointTagById(id: string): Promise<KnowledgePointTag | null> {
+    return this.prisma.knowledgePointTag.findUnique({ where: { id } });
+  }
+
+  async findKnowledgePointTagByName(name: string): Promise<KnowledgePointTag | null> {
+    return this.prisma.knowledgePointTag.findUnique({ where: { name } });
+  }
+
+  async createKnowledgePointTag(name: string): Promise<KnowledgePointTag> {
+    return this.prisma.knowledgePointTag.create({ data: { name } });
+  }
+
+  async updateKnowledgePointTag(id: string, name: string): Promise<KnowledgePointTag> {
+    return this.prisma.knowledgePointTag.update({ where: { id }, data: { name } });
+  }
+
+  async deleteKnowledgePointTag(id: string): Promise<void> {
+    await this.prisma.knowledgePointTag.delete({ where: { id } });
   }
 
   // ─── Categories ───────────────────────────────────────────────────────────

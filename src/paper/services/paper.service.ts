@@ -12,6 +12,7 @@ export interface FormattedStudentAnswer {
   studentName: string;
   answers: string[];
   score: number;
+  redoScore?: number;
   totalPoints: number;
   submitTime: string;
   timeElapsed?: number;
@@ -177,7 +178,10 @@ export class PaperService {
       ? existingPartial.isFirstSubmission
       : paperSubmissions.length === 0;
 
-    const previousBestScore = paperSubmissions.reduce((best, s) => Math.max(best, s.score), 0);
+    const previousBestScore = paperSubmissions.reduce(
+      (best, s) => Math.max(best, s.redoScore ?? s.score),
+      0,
+    );
     const bestScoreAfter = Math.max(previousBestScore, finalScore);
     const pointsGain = Math.max(0, bestScoreAfter - previousBestScore);
 
@@ -222,7 +226,14 @@ export class PaperService {
     }
 
     const updateData: Record<string, unknown> = {};
-    if ('score' in body) updateData['score'] = Number(body['score']);
+    if ('score' in body) {
+      const nextScore = Number(body['score']);
+      updateData['score'] = nextScore;
+      if (!submission.isFirstSubmission) updateData['redoScore'] = nextScore;
+    }
+    if ('redoScore' in body) {
+      updateData['redoScore'] = body['redoScore'] === null ? null : Number(body['redoScore']);
+    }
     if ('totalPoints' in body) updateData['totalPoints'] = Number(body['totalPoints']);
     if ('tag' in body) updateData['tag'] = body['tag'];
     if ('answers' in body) {
@@ -231,7 +242,7 @@ export class PaperService {
         : String(body['answers']);
     }
     for (const k of Object.keys(body)) {
-      if (!['score', 'totalPoints', 'tag', 'answers'].includes(k)) {
+      if (!['score', 'redoScore', 'totalPoints', 'tag', 'answers'].includes(k)) {
         updateData[k] = body[k];
       }
     }
@@ -246,6 +257,38 @@ export class PaperService {
       throw new NotFoundException(`Submission ${submissionId} not found`);
     }
     await this.paperRepository.deleteSubmission(submissionId);
+  }
+
+  // ─── Knowledge point tags ────────────────────────────────────────────────
+
+  async getKnowledgePointTags(keyword?: string): Promise<Record<string, unknown>[]> {
+    const normalizedKeyword = String(keyword ?? '').trim();
+    return this.paperRepository.findKnowledgePointTags(normalizedKeyword || undefined);
+  }
+
+  async createKnowledgePointTag(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const name = this.normalizeKnowledgePointTagName(body['name']);
+    if (await this.paperRepository.findKnowledgePointTagByName(name)) {
+      throw new BadRequestException(`知识点标签“${name}”已存在`);
+    }
+    return this.paperRepository.createKnowledgePointTag(name);
+  }
+
+  async updateKnowledgePointTag(id: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const existing = await this.paperRepository.findKnowledgePointTagById(id);
+    if (!existing) throw new NotFoundException(`知识点标签 ${id} 不存在`);
+    const name = this.normalizeKnowledgePointTagName(body['name']);
+    const duplicate = await this.paperRepository.findKnowledgePointTagByName(name);
+    if (duplicate && duplicate.id !== id) {
+      throw new BadRequestException(`知识点标签“${name}”已存在`);
+    }
+    return this.paperRepository.updateKnowledgePointTag(id, name);
+  }
+
+  async deleteKnowledgePointTag(id: string): Promise<void> {
+    const existing = await this.paperRepository.findKnowledgePointTagById(id);
+    if (!existing) throw new NotFoundException(`知识点标签 ${id} 不存在`);
+    await this.paperRepository.deleteKnowledgePointTag(id);
   }
 
   // ─── Categories ───────────────────────────────────────────────────────────
@@ -348,6 +391,7 @@ export class PaperService {
       studentName: r.studentName,
       answers: parsedAnswers,
       score: r.score,
+      redoScore: r.redoScore ?? undefined,
       totalPoints: r.totalPoints,
       submitTime: r.submitTime,
       timeElapsed: r.timeElapsed ?? undefined,
@@ -356,6 +400,13 @@ export class PaperService {
       tag: r.tag ?? undefined,
       ...parsedOptions,
     };
+  }
+
+  private normalizeKnowledgePointTagName(value: unknown): string {
+    const name = String(value ?? '').trim().replace(/\s+/g, ' ');
+    if (!name) throw new BadRequestException('知识点标签名称不能为空');
+    if (name.length > 50) throw new BadRequestException('知识点标签名称不能超过 50 个字符');
+    return name;
   }
 
   private calculateSubmissionStatus(dto: SubmitPaperDto, paper: Paper | null): number {

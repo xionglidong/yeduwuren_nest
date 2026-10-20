@@ -1380,6 +1380,7 @@
     let g_categories = [];
     let g_papers = [];
     let g_records = [];
+    let g_knowledgePointTags = [];
     let g_map = {};
     let g_predictionRange = {}
     let g_predictionNextNodeLabel = '预测'
@@ -1441,6 +1442,7 @@
         fetch(`/api/v1/students/map`).then(r => r.json()).then(res => res || {}),
         fetch(`/api/v1/config/predictionTimeRange`).then(r => r.json()).then(res => res || { startDate: '', endDate: '' }),
         fetch(`/api/v1/config/predictionNextNodeLabel`).then(r => r.json()).then(res => typeof res === 'string' ? res : ''),
+        fetch(`/api/v1/papers/knowledge-tags/list`).then(r => r.json()).then(res => Array.isArray(res) ? res : []),
       ]).then(res => {
         g_papers = res[0]
         g_records = res[1]
@@ -1448,6 +1450,7 @@
         g_map = res[3]
         g_predictionRange = res[4]
         g_predictionNextNodeLabel = res[5] || '预测'
+        g_knowledgePointTags = res[6]
 
         generateAnswerSelects();
       
@@ -1808,12 +1811,183 @@
           </select>
         `;
       } else {
-        // 知识点 (输入框)
+        // 单一可搜索下拉框：输入内容直接过滤下拉项，最终值只能来自标签库。
+        const selectedName = cleanVal;
+        const hasLegacyValue = selectedName && !g_knowledgePointTags.some((item) => item.name === selectedName);
         return `
-          <input type="text" class="tag-val flex-1 px-2 py-1 border rounded text-xs bg-gray-50 focus:bg-white focus:ring-1 focus:ring-indigo-500 font-medium text-gray-700" placeholder="值 (如: 函数与导数)" value="${escapeHtmlText(cleanVal)}">
+          <div class="knowledge-tag-picker relative flex-1 grid grid-cols-[minmax(130px,1fr)_auto] gap-1">
+            <div class="relative min-w-0">
+              <input type="text" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false"
+                class="tag-val w-full min-w-0 px-2 pr-7 py-1 border rounded text-xs bg-white focus:ring-1 focus:ring-indigo-500 font-medium text-gray-700"
+                placeholder="搜索并选择知识点" value="${escapeHtmlText(selectedName)}"
+                data-selected-value="${escapeHtmlText(selectedName)}" data-committed-value="${escapeHtmlText(selectedName)}" data-legacy-value="${hasLegacyValue ? escapeHtmlText(selectedName) : ''}"
+                onfocus="openKnowledgeTagDropdown(this)" oninput="filterKnowledgeTagOptions(this)" onkeydown="handleKnowledgeTagKeydown(event, this)" onblur="restoreKnowledgeTagSelection(this)">
+              <i class="fa fa-chevron-down pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400"></i>
+              <div class="knowledge-tag-options absolute left-0 right-0 top-full mt-1 hidden max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white p-1 shadow-xl z-[90]"></div>
+            </div>
+            <span class="flex gap-1">
+              <button type="button" class="px-1.5 rounded bg-green-50 text-green-600 hover:bg-green-100" title="新增知识点" onclick="createKnowledgePointTag(this)"><i class="fa fa-plus"></i></button>
+              <button type="button" class="px-1.5 rounded bg-blue-50 text-blue-600 hover:bg-blue-100" title="修改所选知识点" onclick="editKnowledgePointTag(this)"><i class="fa fa-pencil"></i></button>
+              <button type="button" class="px-1.5 rounded bg-red-50 text-red-500 hover:bg-red-100" title="删除所选知识点" onclick="deleteKnowledgePointTag(this)"><i class="fa fa-trash"></i></button>
+            </span>
+          </div>
         `;
       }
     }
+
+    function knowledgeTagMatches(name, keyword) {
+      const source = String(name || '').toLowerCase();
+      const query = String(keyword || '').trim().toLowerCase();
+      if (!query || source.includes(query)) return true;
+      let index = 0;
+      for (const char of source) {
+        if (char === query[index]) index += 1;
+        if (index === query.length) return true;
+      }
+      return false;
+    }
+
+    function renderKnowledgeTagOptions(input) {
+      if (!input) return;
+      const picker = input.closest('.knowledge-tag-picker');
+      const optionsBox = picker && picker.querySelector('.knowledge-tag-options');
+      if (!optionsBox) return;
+      const keyword = input.value.trim();
+      const legacyValue = input.dataset.legacyValue || '';
+      const candidates = [...g_knowledgePointTags];
+      if (legacyValue && !candidates.some((item) => item.name === legacyValue)) {
+        candidates.unshift({ id: '', name: legacyValue, isLegacy: true });
+      }
+      const matches = candidates.filter((item) => knowledgeTagMatches(item.name, keyword));
+      optionsBox.innerHTML = matches.length > 0
+        ? matches.map((item) => `<button type="button" class="knowledge-tag-option flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs text-gray-700 hover:bg-indigo-50 hover:text-indigo-700" data-value="${escapeHtmlText(item.name)}" onmousedown="event.preventDefault()" onclick="selectKnowledgePointTag(this)"><span>${escapeHtmlText(item.name)}</span>${item.isLegacy ? '<span class="ml-2 text-[10px] text-gray-400">历史标签</span>' : ''}</button>`).join('')
+        : '<div class="px-2 py-2 text-center text-xs text-gray-400">没有匹配的知识点</div>';
+      optionsBox.classList.remove('hidden');
+      input.setAttribute('aria-expanded', 'true');
+    }
+
+    function setKnowledgeTagPickerValue(picker, value) {
+      if (!picker) return;
+      const input = picker.querySelector('.tag-val');
+      const optionsBox = picker.querySelector('.knowledge-tag-options');
+      if (!input) return;
+      input.value = value || '';
+      input.dataset.selectedValue = value || '';
+      input.dataset.committedValue = value || '';
+      input.dataset.legacyValue = value && !g_knowledgePointTags.some((item) => item.name === value) ? value : '';
+      if (optionsBox) optionsBox.classList.add('hidden');
+      input.setAttribute('aria-expanded', 'false');
+    }
+
+    window.openKnowledgeTagDropdown = function(input) {
+      renderKnowledgeTagOptions(input);
+    };
+
+    window.filterKnowledgeTagOptions = function(input) {
+      input.dataset.selectedValue = input.value === (input.dataset.committedValue || '') ? input.value : '';
+      renderKnowledgeTagOptions(input);
+    };
+
+    window.selectKnowledgePointTag = function(button) {
+      const picker = button.closest('.knowledge-tag-picker');
+      setKnowledgeTagPickerValue(picker, button.dataset.value || '');
+    };
+
+    window.handleKnowledgeTagKeydown = function(event, input) {
+      const picker = input.closest('.knowledge-tag-picker');
+      const optionsBox = picker && picker.querySelector('.knowledge-tag-options');
+      if (event.key === 'Escape') {
+        if (optionsBox) optionsBox.classList.add('hidden');
+        input.value = input.dataset.committedValue || '';
+        input.dataset.selectedValue = input.dataset.committedValue || '';
+        input.setAttribute('aria-expanded', 'false');
+      } else if (event.key === 'Enter') {
+        const firstOption = optionsBox && optionsBox.querySelector('.knowledge-tag-option');
+        if (firstOption && !optionsBox.classList.contains('hidden')) {
+          event.preventDefault();
+          firstOption.click();
+        }
+      } else if (event.key === 'ArrowDown') {
+        const firstOption = optionsBox && optionsBox.querySelector('.knowledge-tag-option');
+        if (firstOption) { event.preventDefault(); firstOption.focus(); }
+      }
+    };
+
+    window.restoreKnowledgeTagSelection = function(input) {
+      setTimeout(() => {
+        if (document.activeElement && document.activeElement.closest('.knowledge-tag-picker') === input.closest('.knowledge-tag-picker')) return;
+        if (!input.dataset.selectedValue) input.value = input.dataset.committedValue || '';
+        const optionsBox = input.closest('.knowledge-tag-picker')?.querySelector('.knowledge-tag-options');
+        if (optionsBox) optionsBox.classList.add('hidden');
+        input.setAttribute('aria-expanded', 'false');
+      }, 100);
+    };
+
+    function refreshKnowledgeTagControls(renameFrom = '', renameTo = '') {
+      document.querySelectorAll('.knowledge-tag-picker').forEach((picker) => {
+        const input = picker.querySelector('.tag-val');
+        const oldValue = input ? (input.dataset.selectedValue || input.dataset.committedValue || '') : '';
+        const current = renameFrom && oldValue === renameFrom ? renameTo : oldValue;
+        setKnowledgeTagPickerValue(picker, current);
+      });
+    }
+
+    async function parseKnowledgeTagResponse(response) {
+      if (response.ok) return response.status === 204 ? null : response.json();
+      let message = '知识点标签操作失败';
+      try {
+        const data = await response.json();
+        message = Array.isArray(data.message) ? data.message.join('\n') : (data.message || message);
+      } catch (_) {}
+      throw new Error(message);
+    }
+
+    window.createKnowledgePointTag = async function(button) {
+      const name = prompt('请输入新的知识点标签名称：');
+      if (name === null || !name.trim()) return;
+      try {
+        const created = await parseKnowledgeTagResponse(await fetch('/api/v1/papers/knowledge-tags', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+        }));
+        g_knowledgePointTags = await fetch('/api/v1/papers/knowledge-tags/list').then((r) => r.json());
+        refreshKnowledgeTagControls();
+        setKnowledgeTagPickerValue(button.closest('.knowledge-tag-picker'), created.name);
+      } catch (error) { alert(error.message); }
+    };
+
+    window.editKnowledgePointTag = async function(button) {
+      const input = button.closest('.knowledge-tag-picker').querySelector('.tag-val');
+      const selectedValue = input.dataset.selectedValue || input.dataset.committedValue || '';
+      const tag = g_knowledgePointTags.find((item) => item.name === selectedValue);
+      if (!tag) return alert('请先选择要修改的知识点标签');
+      const name = prompt('修改知识点标签名称：', tag.name);
+      if (name === null || !name.trim() || name.trim() === tag.name) return;
+      try {
+        const oldName = tag.name;
+        const updated = await parseKnowledgeTagResponse(await fetch(`/api/v1/papers/knowledge-tags/${encodeURIComponent(tag.id)}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+        }));
+        g_knowledgePointTags = await fetch('/api/v1/papers/knowledge-tags/list').then((r) => r.json());
+        refreshKnowledgeTagControls(oldName, updated.name);
+      } catch (error) { alert(error.message); }
+    };
+
+    window.deleteKnowledgePointTag = async function(button) {
+      const input = button.closest('.knowledge-tag-picker').querySelector('.tag-val');
+      const selectedValue = input.dataset.selectedValue || input.dataset.committedValue || '';
+      const tag = g_knowledgePointTags.find((item) => item.name === selectedValue);
+      if (!tag) return alert('请先选择要删除的知识点标签');
+      if (!confirm(`确定删除知识点标签“${tag.name}”吗？已有套题中的历史标签不会被移除。`)) return;
+      try {
+        await parseKnowledgeTagResponse(await fetch(`/api/v1/papers/knowledge-tags/${encodeURIComponent(tag.id)}`, { method: 'DELETE' }));
+        g_knowledgePointTags = g_knowledgePointTags.filter((item) => item.id !== tag.id);
+        document.querySelectorAll('.knowledge-tag-picker').forEach((picker) => {
+          const pickerInput = picker.querySelector('.tag-val');
+          const pickerValue = pickerInput ? (pickerInput.dataset.selectedValue || pickerInput.dataset.committedValue || '') : '';
+          setKnowledgeTagPickerValue(picker, pickerValue === tag.name ? '' : pickerValue);
+        });
+      } catch (error) { alert(error.message); }
+    };
 
     window.addTagKVRow = function(containerId, key = '', val = '') {
       const list = document.getElementById(`${containerId}_kv_list`);
@@ -1880,7 +2054,9 @@
         const vInput = row.querySelector('.tag-val');
         if (kInput && vInput) {
           const k = kInput.value.trim();
-          const v = vInput.value.trim();
+          const v = k === '知识点'
+            ? String(vInput.dataset.selectedValue || vInput.dataset.committedValue || '').trim()
+            : vInput.value.trim();
           if (k && v) {
             result[k] = v;
           }
@@ -6262,9 +6438,32 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
             openAnalysisModal(); return;
         }
 
-        let totalScore = 0;
-        let highestScore = 0; // 新增：最高分统计
-        let totalPossibleScore = paperAnswers.length * paper.totalPoints;
+        const getRecordedAttemptScore = (answer) => {
+          const raw = answer && !answer.isFirstSubmission && answer.redoScore !== undefined && answer.redoScore !== null
+            ? answer.redoScore
+            : answer && answer.score;
+          return Number.isFinite(Number(raw)) ? Number(raw) : getRecordTotalScore(answer, paper);
+        };
+        const scoreByStudent = new Map();
+        paperAnswers.slice().sort((a, b) => String(a.submitTime || '').localeCompare(String(b.submitTime || ''))).forEach((answer) => {
+          const key = answer.studentId || answer.studentName;
+          if (!scoreByStudent.has(key)) scoreByStudent.set(key, { studentId: answer.studentId, name: answer.studentName, firstScore: null, redoScores: [] });
+          const row = scoreByStudent.get(key);
+          const value = getRecordedAttemptScore(answer);
+          if (answer.isFirstSubmission && row.firstScore === null) row.firstScore = value;
+          else row.redoScores.push(value);
+        });
+        const studentScoreRows = Array.from(scoreByStudent.values()).map((row) => ({
+          ...row,
+          firstScore: row.firstScore === null ? 0 : row.firstScore,
+          redoBestScore: row.redoScores.length ? Math.max(...row.redoScores) : null,
+        }));
+        const firstScores = studentScoreRows.map((row) => row.firstScore);
+        const allRedoScores = studentScoreRows.flatMap((row) => row.redoScores);
+        const firstAverage = firstScores.length ? (firstScores.reduce((sum, value) => sum + value, 0) / firstScores.length).toFixed(1) : '--';
+        const redoAverage = allRedoScores.length ? (allRedoScores.reduce((sum, value) => sum + value, 0) / allRedoScores.length).toFixed(1) : '--';
+        const firstHighest = firstScores.length ? Math.max(...firstScores) : '--';
+        const redoHighest = allRedoScores.length ? Math.max(...allRedoScores) : '--';
         
         // 统计每道选择题的选A、B、C、D的具体人员名单
         let mcqStats = [];
@@ -6277,16 +6476,9 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
             fbStats.push({ correct: 0 });
         }
 
-        let studentChartData = []; // 用于收集学生得分图表的数据
         let totalCorrectQuestions = 0;
 
         paperAnswers.forEach(ans => {
-            const currentScore = getRecordTotalScore(ans, paper);
-            totalScore += currentScore;
-            if (currentScore > highestScore) highestScore = currentScore;
-            
-            studentChartData.push({ name: ans.studentName, score: currentScore });
-
             let correctCount = 0;
             if (ans.answers && ans.answers.length > 0) {
                 ans.answers.forEach((choice, idx) => {
@@ -6325,35 +6517,52 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
             totalCorrectQuestions += correctCount;
         });
 
-        // 整理图表数据 (按得分从高到低排序，图表更好看)
-        studentChartData.sort((a, b) => b.score - a.score);
-        const studentNamesForChart = studentChartData.map(d => d.name);
-        const studentScoresForChart = studentChartData.map(d => d.score);
+        studentScoreRows.sort((a, b) => Math.max(b.firstScore, b.redoBestScore ?? -1) - Math.max(a.firstScore, a.redoBestScore ?? -1));
+        const studentNamesForChart = studentScoreRows.map((row) => row.name);
+        const firstScoresForChart = studentScoreRows.map((row) => row.firstScore);
+        const redoScoresForChart = studentScoreRows.map((row) => row.redoBestScore);
 
-        const avgScore = (totalScore / paperAnswers.length).toFixed(1);
         const totalQuestionsAll = (paper.questionCount + fbCount) * paperAnswers.length;
         const overallAccuracy = totalQuestionsAll > 0 ? Math.round((totalCorrectQuestions / totalQuestionsAll) * 100) : 0;
 
         // 1. 顶部统计块 (改为 4 列，加入最高分)
         let html = `
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
                 <div class="bg-blue-50 rounded-lg p-4 text-center border border-blue-100">
                     <p class="text-sm text-blue-600 font-bold mb-1">参与人数</p>
-                    <p class="text-2xl font-black text-blue-800">${paperAnswers.length}<span class="text-sm ml-1 font-normal">人</span></p>
+                    <p class="text-2xl font-black text-blue-800">${studentScoreRows.length}<span class="text-sm ml-1 font-normal">人</span></p>
                 </div>
                 <div class="bg-red-50 rounded-lg p-4 text-center border border-red-100">
-                    <p class="text-sm text-red-600 font-bold mb-1">最高分</p>
-                    <p class="text-2xl font-black text-red-800">${highestScore}<span class="text-sm ml-1 font-normal">/${paper.totalPoints}分</span></p>
+                    <p class="text-sm text-red-600 font-bold mb-1">首次最高分</p>
+                    <p class="text-2xl font-black text-red-800">${firstHighest}<span class="text-sm ml-1 font-normal">/${paper.totalPoints}分</span></p>
                 </div>
                 <div class="bg-green-50 rounded-lg p-4 text-center border border-green-100">
-                    <p class="text-sm text-green-600 font-bold mb-1">班级平均分</p>
-                    <p class="text-2xl font-black text-green-800">${avgScore}<span class="text-sm ml-1 font-normal">分</span></p>
+                    <p class="text-sm text-green-600 font-bold mb-1">首次平均分</p>
+                    <p class="text-2xl font-black text-green-800">${firstAverage}<span class="text-sm ml-1 font-normal">分</span></p>
+                </div>
+                <div class="bg-amber-50 rounded-lg p-4 text-center border border-amber-100">
+                    <p class="text-sm text-amber-600 font-bold mb-1">重做最高 / 平均</p>
+                    <p class="text-2xl font-black text-amber-800">${redoHighest}<span class="text-sm ml-1 font-normal"> / ${redoAverage}分</span></p>
                 </div>
                 <div class="bg-purple-50 rounded-lg p-4 text-center border border-purple-100">
                     <p class="text-sm text-purple-600 font-bold mb-1">整体得分率</p>
                     <p class="text-2xl font-black text-purple-800">${overallAccuracy}<span class="text-sm ml-1 font-normal">%</span></p>
                 </div>
             </div>`;
+
+        const scoreRowsHtml = studentScoreRows.map((row) => `
+          <tr class="hover:bg-slate-50">
+            <td class="px-4 py-3 text-sm font-semibold text-gray-800">${escapeHtmlText(row.name)} <span class="text-xs font-normal text-gray-400">${escapeHtmlText(row.studentId || '')}</span></td>
+            <td class="px-4 py-3 text-sm font-bold text-blue-600">${row.firstScore}分</td>
+            <td class="px-4 py-3 text-sm font-bold text-amber-600">${row.redoScores.length ? row.redoScores.map((score, index) => `第${index + 1}次 ${score}分`).join('；') : '未重做'}</td>
+          </tr>`).join('');
+        html += `<div class="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm mb-6">
+          <table class="min-w-full divide-y divide-gray-200"><thead class="bg-slate-50"><tr>
+            <th class="px-4 py-3 text-left text-xs font-bold text-gray-500">学生</th>
+            <th class="px-4 py-3 text-left text-xs font-bold text-blue-600">首次得分</th>
+            <th class="px-4 py-3 text-left text-xs font-bold text-amber-600">重做得分</th>
+          </tr></thead><tbody class="divide-y divide-gray-100">${scoreRowsHtml}</tbody></table>
+        </div>`;
 
         // 2. 醒目的图表区域
         html += `
@@ -6363,7 +6572,7 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
                     <canvas id="accuracyChart"></canvas>
                 </div>
                 <div class="border rounded-lg p-4 bg-white shadow-sm">
-                    <h4 class="font-bold text-gray-700 mb-4 text-center"><i class="fa fa-line-chart text-green-500 mr-2"></i>学生得分分布</h4>
+                    <h4 class="font-bold text-gray-700 mb-4 text-center"><i class="fa fa-line-chart text-green-500 mr-2"></i>首次 / 重做得分分布</h4>
                     <canvas id="scoreChart"></canvas>
                 </div>
             </div>`;
@@ -6374,7 +6583,7 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
             const studentId = ans.studentId || '';
             if (!studentId) return;
             const time = ans.actualTimeElapsed || 0;
-            const score = getRecordTotalScore(ans, paper);
+            const score = getRecordedAttemptScore(ans);
             const recTime = ans.recommendedTime || 0;
             const submitTime = ans.submitTime || '';
             
@@ -6387,6 +6596,7 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
                         timeElapsed: time,
                         recommendedTime: recTime,
                         score: score,
+                        attemptType: ans.isFirstSubmission ? '首次' : '重做',
                         submitTime: submitTime
                     });
                 }
@@ -6412,7 +6622,7 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
                     <td class="px-5 py-3 whitespace-nowrap text-sm font-semibold text-gray-900">${item.studentName} (${item.studentId})</td>
                     <td class="px-5 py-3 whitespace-nowrap text-sm font-black text-emerald-600">${formattedTime}</td>
                     <td class="px-5 py-3 whitespace-nowrap text-sm text-gray-500">${recTimeStr}</td>
-                    <td class="px-5 py-3 whitespace-nowrap text-sm text-primary font-bold">${item.score}分</td>
+                    <td class="px-5 py-3 whitespace-nowrap text-sm text-primary font-bold"><span class="mr-1 rounded px-1.5 py-0.5 text-[11px] ${item.attemptType === '首次' ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'}">${item.attemptType}</span>${item.score}分</td>
                     <td class="px-5 py-3 whitespace-nowrap text-sm text-gray-500">${item.submitTime}</td>
                 </tr>
             `;
@@ -6434,7 +6644,7 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
                     <th class="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">姓名 (学号)</th>
                     <th class="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">实际用时</th>
                     <th class="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">推荐用时</th>
-                    <th class="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">得分</th>
+                    <th class="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">得分（作答类型）</th>
                     <th class="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">提交时间</th>
                   </tr>
                 </thead>
@@ -6561,13 +6771,18 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
                     data: {
                         labels: studentNamesForChart,
                         datasets: [{
-                            label: '得分',
-                            data: studentScoresForChart,
-                            backgroundColor: 'rgba(16, 185, 129, 0.6)', // Tailwind green-500
+                            label: '首次得分',
+                            data: firstScoresForChart,
+                            backgroundColor: 'rgba(59, 130, 246, 0.65)',
+                            borderRadius: 4
+                        }, {
+                            label: '重做最高分',
+                            data: redoScoresForChart,
+                            backgroundColor: 'rgba(245, 158, 11, 0.65)',
                             borderRadius: 4
                         }]
                     },
-                    options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, max: paper.totalPoints } } }
+                    options: { plugins: { legend: { display: true } }, scales: { y: { beginAtZero: true, max: paper.totalPoints } } }
                 });
             }
         }, 300); // 延时确保 DOM 已渲染完成
