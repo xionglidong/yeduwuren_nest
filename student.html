@@ -3050,7 +3050,7 @@
         setsList.innerHTML = catPapers.map((paper, idx) => {
           const latestRecord = getLatestRecordForPaper(paper.id, allAnswers);
           const hasAnswered = latestRecord !== null;
-	          const isPartial = latestRecord && latestRecord.status === 0;
+	          const isPartial = latestRecord && (latestRecord.status === 0 || hasAddedQuestionsSinceSubmission(latestRecord, paper));
           const bestScore = getBestAnswerScore(paper);
           const expired = isPaperExpired(paper);
           const canRedo = !!paper.allowRedo && !expired;
@@ -3172,6 +3172,16 @@
      if (userRecords.length === 0) return null;
      userRecords.sort((a, b) => new Date(b.submitTime.replace(/-/g, '/')).getTime() - new Date(a.submitTime.replace(/-/g, '/')).getTime());
      return userRecords[0];
+   }
+
+   function hasAddedQuestionsSinceSubmission(record, paper) {
+     if (!record || !paper) return false;
+     const submittedChoiceCount = Array.isArray(record.answers) ? record.answers.length : 0;
+     const submittedFillBlankCount = Array.isArray(record.fillInBlankAnswered)
+       ? record.fillInBlankAnswered.length
+       : (Array.isArray(record.fillInBlankDetails) ? record.fillInBlankDetails.length : 0);
+     return Number(paper.questionCount || 0) > submittedChoiceCount ||
+       Number(paper.fillInBlankCount || 0) > submittedFillBlankCount;
    }
 
    // 🚀 核心红点检测系统 (终极护甲版：直接使用原生时间戳比对，绝不报错)
@@ -3372,7 +3382,7 @@
         const absoluteIndex = startIndex + index + 1;
         const isNew = paper.createTime ? new Date() - new Date(paper.createTime) < 24 * 60 * 60 * 1000 : false;
         const hasAnswered = latestRecord !== null;
-        const isPartial = latestRecord && latestRecord.status === 0;
+        const isPartial = latestRecord && (latestRecord.status === 0 || hasAddedQuestionsSinceSubmission(latestRecord, paper));
         const bestScore = getBestAnswerScore(paper);
         const expired = isPaperExpired(paper);
         const canRedo = !!paper.allowRedo && !expired;
@@ -3458,7 +3468,7 @@
         historyTimeDisplay.textContent = `${String(Math.floor(timeElapsed / 60)).padStart(2, '0')}:${String(timeElapsed % 60).padStart(2, '0')}`; 
         historyDetailsList.innerHTML = ''; 
         if (historyViewPdfBtn) { const pdfFile = paper && paper.pdfFile ? String(paper.pdfFile).trim() : ''; if (pdfFile) { historyViewPdfBtn.classList.remove('hidden'); historyViewPdfBtn.onclick = () => openPdfFile(pdfFile); } else { historyViewPdfBtn.classList.add('hidden'); historyViewPdfBtn.onclick = null; } }
-        const isPartialRecord = latestRecord.status === 0;
+        const isPartialRecord = latestRecord.status === 0 || hasAddedQuestionsSinceSubmission(latestRecord, paper);
         const submittedChoiceAnswers = (Array.isArray(latestRecord.answers) ? latestRecord.answers : [])
           .slice(0, paper.questionCount)
           .map((answer, index) => ({ answer: answer && typeof answer === 'object' ? (answer.answer || '') : answer, index }))
@@ -3513,13 +3523,14 @@
         const submittedFillInBlankImages = Array.isArray(latestRecord.fillInBlankStudentImage)
           ? latestRecord.fillInBlankStudentImage.filter((url) => String(url || '').trim() !== '')
           : (String(latestRecord.fillInBlankStudentImage || '').trim() ? [latestRecord.fillInBlankStudentImage] : []);
-        if (submittedFillInBlankImages.length > 0 && paper.fillInBlankCount > 0) {
+        if (paper.fillInBlankCount > 0) {
             let fbVideosHtml = ''; if (paper.fillBlankVideos && paper.fillBlankVideos.some(v => v)) { fbVideosHtml = '<div class="mt-4 p-3 bg-indigo-50 rounded-lg border border-indigo-100"><h5 class="text-sm font-bold text-indigo-800 mb-2">填空题视频讲解</h5><div class="space-y-2">'; paper.fillBlankVideos.forEach((video, i) => { if (video) fbVideosHtml += `<div class="flex items-center space-x-2"><span class="text-xs font-medium text-gray-600 w-16">第 ${i + 1} 题:</span><button onclick="playExplanationVideo('./video/${video}', '第 ${i + 1} 道填空题讲解')" class="text-xs bg-white border border-indigo-200 text-indigo-700 px-3 py-1 rounded-full hover:bg-indigo-50 transition-colors flex items-center shadow-sm"><i class="fa fa-play-circle mr-1.5 text-indigo-600"></i> 观看视频</button></div>`; }); fbVideosHtml += '</div></div>'; } 
             let judgmentsHtml = '';
-            if (latestRecord.fillInBlankDetails && Array.isArray(latestRecord.fillInBlankDetails)) {
+            if (paper.fillInBlankCount > 0) {
+                const fillInBlankDetails = Array.isArray(latestRecord.fillInBlankDetails) ? latestRecord.fillInBlankDetails : [];
                 const answeredStates = Array.isArray(latestRecord.fillInBlankAnswered) ? latestRecord.fillInBlankAnswered : null;
                 judgmentsHtml = '<div class="mt-4"><h5 class="text-sm font-bold text-gray-600 mb-2">得分详情</h5><div class="grid grid-cols-3 md:grid-cols-5 gap-2">';
-                latestRecord.fillInBlankDetails.forEach((score, idx) => {
+                Array.from({ length: paper.fillInBlankCount }, (_, idx) => fillInBlankDetails[idx]).forEach((score, idx) => {
                     const isAnswered = answeredStates ? answeredStates[idx] === true : (score !== null && score !== undefined && score !== '');
                     if (!isAnswered) {
                         judgmentsHtml += `<div class="px-2 py-1.5 rounded border flex items-center justify-center space-x-1 bg-gray-50 border-gray-200 text-gray-500"><span class="text-xs font-medium">题${idx + 1}:</span><span class="font-bold text-sm">未作答</span></div>`;
@@ -3533,7 +3544,9 @@
             }
             
          let stuImagesHtml = '';
-            stuImagesHtml = submittedFillInBlankImages.map(url => `<img src="${url}" class="w-full h-auto max-h-[300px] rounded object-contain cursor-pointer hover:opacity-90 mb-2" onclick="showImagePreview(this.src)" />`).join('');
+            stuImagesHtml = submittedFillInBlankImages.length > 0
+              ? submittedFillInBlankImages.map(url => `<img src="${url}" class="w-full h-auto max-h-[300px] rounded object-contain cursor-pointer hover:opacity-90 mb-2" onclick="showImagePreview(this.src)" />`).join('')
+              : '<div class="py-8 text-center text-sm text-gray-400">尚未上传填空题答卷</div>';
 
             // 拆分逻辑，防止拼装HTML时出错
             let answerImagesHtml = '';
@@ -3544,7 +3557,7 @@
             }
 
             const fbDetailItem = document.createElement('div'); fbDetailItem.className = 'mt-6 border-t pt-4'; 
-            fbDetailItem.innerHTML = `<h4 class="font-bold text-gray-700 mb-3">填空题部分 (自评得分: ${latestRecord.fillInBlankScore}分)</h4><div class="grid md:grid-cols-2 gap-4"><div class="border rounded-lg p-2"><h5 class="text-center font-bold mb-2 text-xs text-gray-500">你的答卷</h5><div class="max-h-[400px] overflow-y-auto space-y-2">${stuImagesHtml}</div></div><div class="border rounded-lg p-2 bg-green-50"><h5 class="text-center font-bold mb-2 text-xs text-green-700">参考答案</h5>${answerImagesHtml}</div></div>${judgmentsHtml}${fbVideosHtml}`; 
+            fbDetailItem.innerHTML = `<h4 class="font-bold text-gray-700 mb-3">填空题部分 (自评得分: ${Number(latestRecord.fillInBlankScore) || 0}分)</h4><div class="grid md:grid-cols-2 gap-4"><div class="border rounded-lg p-2"><h5 class="text-center font-bold mb-2 text-xs text-gray-500">你的答卷</h5><div class="max-h-[400px] overflow-y-auto space-y-2">${stuImagesHtml}</div></div><div class="border rounded-lg p-2 bg-green-50"><h5 class="text-center font-bold mb-2 text-xs text-green-700">参考答案</h5>${answerImagesHtml}</div></div>${judgmentsHtml}${fbVideosHtml}`;
             historyDetailsList.appendChild(fbDetailItem); 
         } 
         
@@ -3575,7 +3588,7 @@
       if (!studentInfo.name) return showGeneralModal('请先登录', '请先登录后再进行答题', 'warning');
       currentPaper = visiblePapers.find(p => p.id === paperId); if (!currentPaper) return;
       const latestRecord = await getLatestAnswerRecord(paperId);
-	      currentPartialRecord = latestRecord && latestRecord.status === 0 ? latestRecord : null;
+	      currentPartialRecord = latestRecord && (latestRecord.status === 0 || hasAddedQuestionsSinceSubmission(latestRecord, currentPaper)) ? latestRecord : null;
 	      if (isPaperExpired(currentPaper)) {
 	        return showGeneralModal('已截止', `该套题提交已截止 (${currentPaper.deadline ? currentPaper.deadline.replace('T', ' ') : ''})，无法继续作答与提交！`, 'warning');
 	      }
@@ -3734,7 +3747,7 @@
           const container = document.getElementById('fbStudentImagesContainer');
           container.innerHTML = uploadedFbImages.map(url => `<img src="${url}" class="w-full h-auto rounded object-contain mb-2 border border-gray-200 shadow-sm cursor-pointer hover:opacity-90" onclick="showImagePreview(this.src)" />`).join('');
 	          if (fbIsConfirmed) {
-	            const hasUnansweredFillBlank = currentPartialRecord && Array.isArray(fbAnswered) && fbAnswered.some(value => value !== true);
+	            const hasUnansweredFillBlank = currentPartialRecord && Array.from({ length: count }, (_, index) => fbAnswered && fbAnswered[index]).some(value => value !== true);
 	            document.getElementById('fbActionButtons').classList.toggle('hidden', !hasUnansweredFillBlank);
 	            if (hasUnansweredFillBlank) {
 	              document.getElementById('fbReuploadBtn').classList.add('hidden');

@@ -101,7 +101,11 @@ export class PaperService {
     const paper = await this.paperRepository.findPaperById(dto.paperId);
     const previousSubmissions = await this.paperRepository.findSubmissionsByStudent(dto.studentId);
     const paperSubmissions = previousSubmissions.filter((s) => s.paperId === dto.paperId);
-    const existingPartial = paperSubmissions.find((s) => s.status === 0);
+    const latestSubmission = paperSubmissions[0];
+    const existingPartial = paperSubmissions.find((s) => s.status === 0) ??
+      (paper && latestSubmission && this.hasAddedQuestionsSinceSubmission(latestSubmission, paper)
+        ? latestSubmission
+        : undefined);
 
     if (existingPartial) {
       try {
@@ -440,6 +444,47 @@ export class PaperService {
     return name;
   }
 
+  private getPaperFillInBlankCount(paper: Paper): number {
+    if (paper.fillInBlankConfig) {
+      try {
+        const config = JSON.parse(paper.fillInBlankConfig);
+        if (Array.isArray(config)) return config.length;
+      } catch {}
+    }
+
+    if (paper.options) {
+      try {
+        const options = JSON.parse(paper.options) as Record<string, unknown>;
+        return Number(options['fillInBlankCount'] ?? 0) || 0;
+      } catch {}
+    }
+
+    return 0;
+  }
+
+  private hasAddedQuestionsSinceSubmission(submission: StudentAnswer, paper: Paper): boolean {
+    let submittedChoiceCount = 0;
+    try {
+      const answers = JSON.parse(submission.answers);
+      if (Array.isArray(answers)) submittedChoiceCount = answers.length;
+    } catch {}
+
+    let submittedFillInBlankCount = 0;
+    if (submission.options) {
+      try {
+        const options = JSON.parse(submission.options) as Record<string, unknown>;
+        if (Array.isArray(options['fillInBlankAnswered'])) {
+          submittedFillInBlankCount = options['fillInBlankAnswered'].length;
+        } else if (Array.isArray(options['fillInBlankDetails'])) {
+          submittedFillInBlankCount = options['fillInBlankDetails'].length;
+        }
+      } catch {}
+    }
+
+    return paper.questionCount > submittedChoiceCount ||
+      this.getPaperFillInBlankCount(paper) > submittedFillInBlankCount;
+  }
+
   private calculateSubmissionStatus(dto: SubmitPaperDto, paper: Paper | null): number {
     const requestedComplete = dto.status === undefined || dto.status === 1;
     if (!paper) return requestedComplete ? 1 : 0;
@@ -449,20 +494,7 @@ export class PaperService {
       return typeof answer === 'string' && answer.trim().length > 0;
     });
 
-    let fillInBlankCount = 0;
-    if (paper.fillInBlankConfig) {
-      try {
-        const config = JSON.parse(paper.fillInBlankConfig);
-        if (Array.isArray(config)) fillInBlankCount = config.length;
-      } catch {}
-    }
-
-    if (fillInBlankCount === 0 && paper.options) {
-      try {
-        const options = JSON.parse(paper.options) as Record<string, unknown>;
-        fillInBlankCount = Number(options['fillInBlankCount'] ?? 0) || 0;
-      } catch {}
-    }
+    const fillInBlankCount = this.getPaperFillInBlankCount(paper);
 
     const images = Array.isArray(dto.fillInBlankStudentImage)
       ? dto.fillInBlankStudentImage

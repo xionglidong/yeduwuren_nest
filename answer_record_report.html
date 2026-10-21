@@ -404,6 +404,38 @@
       container.innerHTML = list.map((src) => `<img src="${src}" alt="图片">`).join('');
     }
 
+    function hasAnsweredChoice(answer) {
+      return answer !== null && answer !== undefined && String(answer).trim() !== '';
+    }
+
+    function hasAnsweredFillBlank(record, index) {
+      const answeredStates = Array.isArray(record?.fillInBlankAnswered) ? record.fillInBlankAnswered : null;
+      if (answeredStates) return answeredStates[index] === true;
+      const details = Array.isArray(record?.fillInBlankDetails) ? record.fillInBlankDetails : [];
+      const value = details[index];
+      return value !== null && value !== undefined && value !== '';
+    }
+
+    function getFillBlankMaxScore(payload, index) {
+      const points = Array.isArray(payload.paperContent?.fbPointsArray) ? payload.paperContent.fbPointsArray : [];
+      return points.length > 0 ? (parseFloat(points[index]) || 0) : (parseFloat(payload.paperContent?.fillInBlankPoints) || 0);
+    }
+
+    function calculateAnsweredFullScore(payload) {
+      const answers = Array.isArray(payload.record?.answers) ? payload.record.answers : [];
+      const questionTypes = Array.isArray(payload.paperContent?.questionTypes) ? payload.paperContent.questionTypes : [];
+      const singlePoints = parseFloat(payload.paperContent?.singlePoints) || 0;
+      const choiceTotal = answers.reduce((sum, answer, index) => {
+        if (!hasAnsweredChoice(answer)) return sum;
+        return sum + (questionTypes[index] === 'multiple' ? 6 : singlePoints);
+      }, 0);
+      const fillCount = parseInt(payload.paper?.fillInBlankCount, 10) || 0;
+      const fillTotal = Array.from({ length: fillCount }, (_, index) => index).reduce((sum, index) => {
+        return hasAnsweredFillBlank(payload.record, index) ? sum + getFillBlankMaxScore(payload, index) : sum;
+      }, 0);
+      return choiceTotal + fillTotal;
+    }
+
     window.addEventListener('DOMContentLoaded', () => {
       const key = new URLSearchParams(window.location.search).get('key');
       if (!key) {
@@ -438,7 +470,7 @@
       const totalCount = (payload.paper?.questionCount || 0) + (payload.paper?.fillInBlankCount || 0);
       document.getElementById('paperCount').textContent = `${totalCount} 题`;
       document.getElementById('scoreText').textContent = `${payload.record?.totalScore ?? 0}分`;
-      document.getElementById('scoreTotal').textContent = `${payload.paper?.totalPoints ?? 0}分`;
+      document.getElementById('scoreTotal').textContent = `${calculateAnsweredFullScore(payload)}分`;
 	      document.getElementById('attemptRank').textContent = payload.record?.attemptRank ? `第 ${payload.record.attemptRank} 名` : '--';
 	      document.getElementById('paperAverageScore').textContent = `${payload.paper?.averageScore ?? 0}分`;
 	      document.getElementById('bestScore').textContent = `${payload.record?.paperHighestScore ?? payload.record?.bestScore ?? 0}分`;
@@ -480,10 +512,13 @@
       const studentAnswers = Array.isArray(payload.record?.answers) ? payload.record.answers : [];
       const standardAnswers = Array.isArray(payload.paperContent?.answers) ? payload.paperContent.answers : [];
       const options = payload.paperContent?.options || {};
-      if (studentAnswers.length === 0) {
+      const answeredChoiceEntries = studentAnswers
+        .map((answer, index) => ({ answer, index }))
+        .filter(({ answer }) => hasAnsweredChoice(answer));
+      if (answeredChoiceEntries.length === 0) {
         choiceBody.innerHTML = '<tr><td colspan="6" class="text-center text-gray-400 py-6">暂无选择题作答</td></tr>';
       } else {
-        choiceBody.innerHTML = studentAnswers.map((answer, index) => {
+        choiceBody.innerHTML = answeredChoiceEntries.map(({ answer, index }) => {
           const rawCorrect = standardAnswers[index] || '';
           const correct = typeof rawCorrect === 'object' && rawCorrect !== null ? (rawCorrect.answer || '') : String(rawCorrect);
           const isMultiple = payload.paperContent?.questionTypes && payload.paperContent.questionTypes[index] === 'multiple';
@@ -526,8 +561,13 @@
         const details = Array.isArray(payload.record?.fillInBlankDetails) ? payload.record.fillInBlankDetails : [];
         const fbPointsArray = Array.isArray(payload.paperContent?.fbPointsArray) ? payload.paperContent.fbPointsArray : [];
         const fbConfig = Array.isArray(payload.paperContent?.fillInBlankConfig) ? payload.paperContent.fillInBlankConfig : [];
+        const answeredFillIndexes = Array.from({ length: fillCount }, (_, index) => index)
+          .filter((index) => hasAnsweredFillBlank(payload.record, index));
+        document.getElementById('fillCount').textContent = `${answeredFillIndexes.length} 题`;
 
-        detailList.innerHTML = new Array(fillCount).fill(0).map((_, index) => {
+        detailList.innerHTML = answeredFillIndexes.length === 0
+          ? '<tr><td colspan="3" class="text-center text-gray-400 py-6">暂无填空题作答</td></tr>'
+          : answeredFillIndexes.map((index) => {
           const maxScore = fbPointsArray.length > 0 ? (fbPointsArray[index] || 0) : (payload.paperContent?.fillInBlankPoints || 0);
           const score = details[index];
           let scoreText = '--';
@@ -542,7 +582,7 @@
             <td class="font-bold text-indigo-600">${scoreText}</td>
             <td class="py-2.5">${renderVerticalTags(fbTagsList)}</td>
           </tr>`;
-        }).join('');
+          }).join('');
         renderImageList('studentFillImages', payload.record?.fillInBlankStudentImage || []);
       }
 
