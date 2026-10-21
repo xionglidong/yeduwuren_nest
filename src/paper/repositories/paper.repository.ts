@@ -202,6 +202,7 @@ export class PaperRepository {
     const submitTimeStr = dto.submitTime || new Date().toISOString().replace('T', ' ').substring(0, 19);
     const optionsObj: Record<string, unknown> = {};
     if (dto.fillInBlankDetails !== undefined) optionsObj['fillInBlankDetails'] = dto.fillInBlankDetails;
+    if (dto.fillInBlankAnswered !== undefined) optionsObj['fillInBlankAnswered'] = dto.fillInBlankAnswered;
     if (dto.fillInBlankStudentImage !== undefined) optionsObj['fillInBlankStudentImage'] = dto.fillInBlankStudentImage;
     if (dto.fillInBlankConfirmed !== undefined) optionsObj['fillInBlankConfirmed'] = dto.fillInBlankConfirmed;
     if (dto.fillInBlankScore !== undefined) optionsObj['fillInBlankScore'] = dto.fillInBlankScore;

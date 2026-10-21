@@ -42,6 +42,9 @@ export class SubmitPaperDto {
   fillInBlankDetails?: unknown;
 
   @IsOptional()
+  fillInBlankAnswered?: unknown;
+
+  @IsOptional()
   fillInBlankStudentImage?: unknown;
 
   @IsOptional()

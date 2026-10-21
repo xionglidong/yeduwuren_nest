@@ -118,10 +118,41 @@ export class PaperService {
         try {
           const persistedOptions = JSON.parse(existingPartial.options) as Record<string, unknown>;
           if (persistedOptions['fillInBlankConfirmed'] === true) {
+            const submittedFillScore = typeof dto.fillInBlankScore === 'number' ? dto.fillInBlankScore : 0;
+            const persistedDetails = Array.isArray(persistedOptions['fillInBlankDetails'])
+              ? persistedOptions['fillInBlankDetails'] as unknown[]
+              : [];
+            const persistedAnswered = Array.isArray(persistedOptions['fillInBlankAnswered'])
+              ? persistedOptions['fillInBlankAnswered'] as unknown[]
+              : persistedDetails.map((value) => value !== null && value !== undefined && value !== '');
+            const incomingDetails = Array.isArray(dto.fillInBlankDetails) ? dto.fillInBlankDetails : [];
+            const incomingAnswered = Array.isArray(dto.fillInBlankAnswered) ? dto.fillInBlankAnswered : [];
+            const detailCount = Math.max(
+              persistedDetails.length,
+              persistedAnswered.length,
+              incomingDetails.length,
+              incomingAnswered.length,
+            );
+            dto.fillInBlankDetails = Array.from({ length: detailCount }, (_, index) =>
+              persistedAnswered[index] === true ? persistedDetails[index] : incomingDetails[index] ?? null,
+            );
+            dto.fillInBlankAnswered = Array.from({ length: detailCount }, (_, index) =>
+              persistedAnswered[index] === true || incomingAnswered[index] === true,
+            );
             dto.fillInBlankConfirmed = true;
-            dto.fillInBlankStudentImage = persistedOptions['fillInBlankStudentImage'];
-            dto.fillInBlankDetails = persistedOptions['fillInBlankDetails'];
-            dto.fillInBlankScore = persistedOptions['fillInBlankScore'];
+            const persistedImages = Array.isArray(persistedOptions['fillInBlankStudentImage'])
+              ? persistedOptions['fillInBlankStudentImage'] as unknown[]
+              : [];
+            const incomingImages = Array.isArray(dto.fillInBlankStudentImage) ? dto.fillInBlankStudentImage : [];
+            dto.fillInBlankStudentImage = [...new Set([...persistedImages, ...incomingImages])];
+            const mergedFillScore = (dto.fillInBlankDetails as unknown[]).reduce<number>(
+              (sum, value, index) => sum + ((dto.fillInBlankAnswered as unknown[])[index] === true && typeof value === 'number' ? value : 0),
+              0,
+            );
+            dto.fillInBlankScore = mergedFillScore;
+            if (typeof dto.score === 'number') {
+              dto.score = dto.score - submittedFillScore + mergedFillScore;
+            }
           }
         } catch {}
       }
@@ -439,10 +470,15 @@ export class PaperService {
         ? [dto.fillInBlankStudentImage]
         : [];
     const details = Array.isArray(dto.fillInBlankDetails) ? dto.fillInBlankDetails : [];
+    const answered = Array.isArray(dto.fillInBlankAnswered)
+      ? dto.fillInBlankAnswered
+      : details.map((value) => value !== null && value !== undefined && value !== '');
     const fillInBlankComplete = fillInBlankCount === 0 || (
       dto.fillInBlankConfirmed === true &&
       images.length > 0 &&
       details.length >= fillInBlankCount &&
+      answered.length >= fillInBlankCount &&
+      answered.slice(0, fillInBlankCount).every((value) => value === true) &&
       details.slice(0, fillInBlankCount).every((value) => value !== null && value !== undefined && value !== '')
     );
 
