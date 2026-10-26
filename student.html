@@ -3932,6 +3932,7 @@
               score += qInfo.score;
               scoreDetails.push({
                   questionNumber: index + 1,
+                  answered: answer !== null && answer !== undefined && String(answer).trim() !== '',
                   status: qInfo.status,
                   statusText: qInfo.text,
                   scoreEarned: qInfo.score,
@@ -3969,7 +3970,14 @@
           }
 	          if (submissionStatus === 0) {
 	              closeAnswerModal();
-	              showGeneralModal('部分完成', `本次部分作答得分 ${score} 分，已计入成绩与数据统计。${message} 后续可继续作答。`, 'success');
+	              showScoreDetailModal(
+	                score,
+	                currentPaper.totalPoints,
+	                scoreDetails.filter(item => item.answered),
+	                `本次为部分作答，已计入成绩与数据统计。${message} 后续可继续作答。`,
+	                secondsElapsed,
+	                '部分作答提交成功！'
+	              );
 	              init();
 	              return;
 	          }
@@ -4015,9 +4023,11 @@
       }
     }
 
-    function showScoreDetailModal(score, totalPoints, details, message, timeElapsed) {
+    function showScoreDetailModal(score, totalPoints, details, message, timeElapsed, modalTitle = '作答提交成功！') {
       currentSubmittingScore = score;
       currentSubmittingTimeElapsed = timeElapsed;
+      const scoreModalTitle = document.getElementById('scoreModalTitle');
+      if (scoreModalTitle) scoreModalTitle.textContent = modalTitle;
       
       populateRankCohortFilter();
       const filterSelect = document.getElementById('rankCohortFilter');

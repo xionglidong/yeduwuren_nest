@@ -20,6 +20,8 @@ export class TeachingLogController {
       query.page ?? 1,
       query.pageSize ?? 8,
       query.studentName,
+      query.className,
+      query.logDate,
     );
   }
 

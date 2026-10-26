@@ -17,4 +17,12 @@ export class QueryTeachingLogDto {
   @IsString()
   @IsOptional()
   studentName?: string;
+
+  @IsString()
+  @IsOptional()
+  className?: string;
+
+  @IsString()
+  @IsOptional()
+  logDate?: string;
 }

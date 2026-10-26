@@ -625,6 +625,22 @@
                 <h2 class="text-2xl font-black text-gray-800 flex items-center tracking-wide"><i class="fa fa-calendar text-indigo-500 mr-3"></i>教学历程记录</h2>
                 <span class="text-sm text-indigo-600 bg-indigo-50 px-4 py-1.5 rounded-full font-bold border border-indigo-100" id="logCount">加载中...</span>
               </div>
+              <div class="mb-6 rounded-xl border border-indigo-100 bg-indigo-50/60 p-4">
+                <div class="flex flex-col gap-3 lg:flex-row lg:items-end">
+                  <div class="flex-1">
+                    <label for="teachDateFilter" class="mb-1 block text-xs font-bold text-gray-600"><i class="fa fa-calendar-check-o mr-1 text-indigo-500"></i>上课日期</label>
+                    <input type="date" id="teachDateFilter" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200">
+                  </div>
+                  <div class="flex-1">
+                    <label for="teachClassFilter" class="mb-1 block text-xs font-bold text-gray-600"><i class="fa fa-users mr-1 text-indigo-500"></i>学生姓名 / 班级</label>
+                    <input type="text" id="teachClassFilter" placeholder="输入班级名称" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200">
+                  </div>
+                  <div class="flex gap-2">
+                    <button type="button" onclick="applyTeachFilters()" class="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700"><i class="fa fa-filter mr-1.5"></i>筛选</button>
+                    <button type="button" onclick="resetTeachFilters()" class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-600 transition hover:bg-gray-50"><i class="fa fa-refresh mr-1.5"></i>重置</button>
+                  </div>
+                </div>
+              </div>
               <div id="logListContainer" class="flex-grow space-y-8 relative before:absolute before:inset-0 before:ml-[1.1rem] before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-indigo-200 before:via-indigo-100 before:to-transparent pb-10">
                 <div class="text-center py-20 text-gray-400 ml-8" id="loadingState">
                   <i class="fa fa-spinner fa-spin text-4xl mb-3 text-indigo-500"></i>
@@ -989,7 +1005,12 @@
       countBadge.textContent = '加载中...';
 
       try {
-        const res = await fetch(`/api/v1/teaching-logs?page=${page}&pageSize=${TEACH_PAGE_SIZE}`);
+        const params = new URLSearchParams({ page: String(page), pageSize: String(TEACH_PAGE_SIZE) });
+        const dateFilter = document.getElementById('teachDateFilter')?.value || '';
+        const classFilter = document.getElementById('teachClassFilter')?.value.trim() || '';
+        if (dateFilter) params.set('logDate', dateFilter);
+        if (classFilter) params.set('className', classFilter);
+        const res = await fetch(`/api/v1/teaching-logs?${params.toString()}`);
         const data = await res.json();
         const list = data.list || [];
         const total = data.total || 0;
@@ -1020,6 +1041,22 @@
         }
       }
     }
+
+    function applyTeachFilters() {
+      loadTeachList(1);
+    }
+
+    function resetTeachFilters() {
+      const dateFilter = document.getElementById('teachDateFilter');
+      const classFilter = document.getElementById('teachClassFilter');
+      if (dateFilter) dateFilter.value = '';
+      if (classFilter) classFilter.value = '';
+      loadTeachList(1);
+    }
+
+    document.getElementById('teachClassFilter')?.addEventListener('keydown', event => {
+      if (event.key === 'Enter') applyTeachFilters();
+    });
 
     function renderTeachList(logs) {
       const container = document.getElementById('logListContainer');

@@ -21,12 +21,14 @@ export class TeachingLogRepository {
     page: number,
     pageSize: number,
     studentName?: string,
+    className?: string,
+    logDate?: string,
   ): Promise<TeachingLogListResult> {
-    const where = this.buildWhere(studentName);
+    const where = this.buildWhere(studentName, className, logDate);
     const [list, total] = await Promise.all([
       this.prisma.teachingLog.findMany({
         where,
-        orderBy: [{ logDate: 'desc' }, { createdAt: 'desc' }],
+        orderBy: [{ logDate: 'desc' }, { startTime: 'desc' }, { createdAt: 'desc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
@@ -42,7 +44,7 @@ export class TeachingLogRepository {
   async findByStudentName(name: string): Promise<TeachingLog[]> {
     return this.prisma.teachingLog.findMany({
       where: { studentName: { contains: name } },
-      orderBy: [{ logDate: 'desc' }, { createdAt: 'desc' }],
+      orderBy: [{ logDate: 'desc' }, { startTime: 'desc' }, { createdAt: 'desc' }],
     });
   }
 
@@ -79,10 +81,11 @@ export class TeachingLogRepository {
     await this.prisma.teachingLog.delete({ where: { id } });
   }
 
-  private buildWhere(studentName?: string) {
-    if (!studentName || studentName.trim() === '') return {};
+  private buildWhere(studentName?: string, className?: string, logDate?: string) {
+    const nameFilter = (className || studentName || '').trim();
     return {
-      studentName: { contains: studentName.trim() },
+      ...(nameFilter && { studentName: { contains: nameFilter } }),
+      ...(logDate?.trim() && { logDate: logDate.trim() }),
     };
   }
 }

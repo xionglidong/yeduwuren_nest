@@ -12,8 +12,10 @@ export class TeachingLogService {
     page: number,
     pageSize: number,
     studentName?: string,
+    className?: string,
+    logDate?: string,
   ): Promise<TeachingLogListResult> {
-    return this.teachingLogRepository.findAll(page, pageSize, studentName);
+    return this.teachingLogRepository.findAll(page, pageSize, studentName, className, logDate);
   }
 
   async findByStudentName(name: string): Promise<TeachingLog[]> {
