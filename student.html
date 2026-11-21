@@ -948,7 +948,7 @@
    }
 
    function buildPredictionChart(nodes, predictedScore, predictedScoreRange, nextLabel, containerWidth, containerHeight) {
-     const scores = nodes.map(n => n.score);
+     const scores = nodes.map(n => Math.round(n.score * n.weight) );
      const n = nodes.length;
 
      const PAD_X = 80;
