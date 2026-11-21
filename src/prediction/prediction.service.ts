@@ -12,8 +12,14 @@ export interface PredictionNode {
   index: number;
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
-  label: string; // MM-DD ~ MM-DD
-  score: number; // 0..150
+  label: string; // MM-DD
+  score: number; // 本次练习按 150 分制折算后的分数
+  rawScore: number;
+  totalScore: number;
+  type: string;
+  typeLabel: string;
+  name: string;
+  weight: number;
   questionCount: number;
   knowledgePoints: KnowledgePointScore[];
 }
@@ -59,34 +65,36 @@ export interface PhaseTargetPrediction {
   reason?: string; // 'no-config' | 'no-data'
 }
 
-const NODE_DAYS = 7;
+const NODE_DAYS = 1;
 const BASE_SCORE = 150;
 const MAX_SCORE = 150;
 const COMPREHENSIVE_WEIGHT = 0.8;
 const IN_CLASS_WEIGHT = 0.6;
 const HOMEWORK_WEIGHT = 0.4;
 const SCHOOL_SCORE_WEIGHT = 0.8;
-const DIFFICULTY_COEFF: Record<string, number> = { 简单题: 0.85, 中档题: 1.0, 较难题: 1.2 };
-const TYPE_COEFF: Record<string, number> = { 新题: 1.0, 旧题: 0.9 };
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+type PredictionWeights = PredictionComposition['weights'];
+
+const DEFAULT_PREDICTION_WEIGHTS: PredictionWeights = {
+  comprehensive: COMPREHENSIVE_WEIGHT,
+  test: IN_CLASS_WEIGHT,
+  custom: IN_CLASS_WEIGHT,
+  homework: HOMEWORK_WEIGHT,
+  schoolScore: SCHOOL_SCORE_WEIGHT,
+  correctionBonus: 0.1,
+};
+
 interface ParsedPaper {
   type: string;
-  answers: unknown[];
+  name: string;
+  totalPoints: number;
   fillInBlankConfig: Record<string, unknown>[];
   questionCount: number;
   singlePoints: number;
-}
-
-interface NodeAgg {
-  weightedCorrect: number;
-  weightedTotal: number;
-  questionCount: number;
-  diffSum: number;
-  diffCount: number;
-  typeSum: number;
-  typeCount: number;
+  questionTypes: string[];
+  fillInBlankPoints: number[];
 }
 
 @Injectable()
@@ -111,6 +119,7 @@ export class PredictionService {
       typeof nextNodeLabelRaw === 'string' && nextNodeLabelRaw.trim()
         ? nextNodeLabelRaw.trim()
         : '预测';
+    const weights = await this.getPredictionWeights();
 
     let cfgStart: string | undefined;
     let cfgEnd: string | undefined;
@@ -144,14 +153,7 @@ export class PredictionService {
           custom: 0,
           correction: 0,
           schoolScore: 0,
-          weights: {
-            comprehensive: COMPREHENSIVE_WEIGHT,
-            test: IN_CLASS_WEIGHT,
-            custom: IN_CLASS_WEIGHT,
-            homework: HOMEWORK_WEIGHT,
-            schoolScore: SCHOOL_SCORE_WEIGHT,
-            correctionBonus: 0.1,
-          },
+          weights,
         },
         suggestions: [],
         reason: 'no-config',
@@ -196,18 +198,22 @@ export class PredictionService {
       }
       paperMap.set(p.id, {
         type: typeof opts['type'] === 'string' ? opts['type'] : 'test',
-        answers: this.safeParseJson<unknown[]>(p.answers, []),
+        name: p.name,
+        totalPoints: p.totalPoints,
         fillInBlankConfig: this.safeParseJson<Record<string, unknown>[]>(p.fillInBlankConfig, []),
         questionCount: p.questionCount,
         singlePoints: p.singlePoints,
+        questionTypes: Array.isArray(opts['questionTypes'])
+          ? (opts['questionTypes'] as unknown[]).map((value) => String(value))
+          : [],
+        fillInBlankPoints: Array.isArray(opts['fbPointsArray'])
+          ? (opts['fbPointsArray'] as unknown[]).map((value) => Number(value) || 0)
+          : [],
       });
     }
 
-    // 5. Bucket & aggregate: nodeIndex -> NodeAgg.
-    //    Scores are now computed from the node-wide weighted accuracy instead of
-    //    per-knowledge-point accuracy, so papers without knowledge-point tags are
-    //    no longer skipped.
-    const nodeAgg = new Map<number, NodeAgg>();
+    // 5. Build one chart point per practice. No 7-day averaging is performed.
+    const practicePoints: Array<PredictionNode & { timeMs: number; regressionX: number }> = [];
     const composition: PredictionComposition = {
       test: 0,
       homework: 0,
@@ -215,46 +221,9 @@ export class PredictionService {
       custom: 0,
       correction: 0,
       schoolScore: 0,
-      weights: {
-        comprehensive: COMPREHENSIVE_WEIGHT,
-        test: IN_CLASS_WEIGHT,
-        custom: IN_CLASS_WEIGHT,
-        homework: HOMEWORK_WEIGHT,
-        schoolScore: SCHOOL_SCORE_WEIGHT,
-        correctionBonus: 0.1,
-      },
+      weights,
     };
     let hasCorrection = false;
-
-    const accumulate = (
-      nodeIndex: number,
-      weightCoef: number,
-      correct: boolean,
-      tags: Record<string, unknown>,
-    ) => {
-      const { difficulty, typeCoef } = this.extractTags(tags);
-      let agg = nodeAgg.get(nodeIndex);
-      if (!agg) {
-        agg = {
-          weightedCorrect: 0,
-          weightedTotal: 0,
-          questionCount: 0,
-          diffSum: 0,
-          diffCount: 0,
-          typeSum: 0,
-          typeCount: 0,
-        };
-        nodeAgg.set(nodeIndex, agg);
-      }
-      const w = weightCoef * difficulty * typeCoef;
-      agg.weightedTotal += w;
-      if (correct) agg.weightedCorrect += w;
-      agg.questionCount += 1;
-      agg.diffSum += difficulty;
-      agg.diffCount++;
-      agg.typeSum += typeCoef;
-      agg.typeCount++;
-    };
 
     for (const sub of submissions) {
       const dt = new Date(String(sub.submitTime || '').replace(/-/g, '/'));
@@ -278,65 +247,50 @@ export class PredictionService {
 
       const weightCoef =
         paper.type === 'comprehensive'
-          ? COMPREHENSIVE_WEIGHT
-          : paper.type === 'test' || paper.type === 'custom'
-            ? IN_CLASS_WEIGHT
-            : paper.type === 'homework'
-              ? HOMEWORK_WEIGHT
-              : null;
+          ? weights.comprehensive
+          : paper.type === 'test'
+            ? weights.test
+            : paper.type === 'custom'
+              ? weights.custom
+              : paper.type === 'homework'
+                ? weights.homework
+                : null;
       if (weightCoef === null) continue; // correction only counts toward composition/bonus
 
-      const nodeIndex = Math.floor((dt.getTime() - rangeStart.getTime()) / (NODE_DAYS * DAY_MS));
-
-      const subAnswers = this.safeParseJson<unknown[]>(sub.answers, []);
-      const subOpts = this.safeParseJson<Record<string, unknown>>(sub.options, {});
-      const fbDetails = Array.isArray(subOpts['fillInBlankDetails'])
-        ? (subOpts['fillInBlankDetails'] as unknown[])
-        : [];
-
-      // MC questions
-      const stdAnswers = paper.answers;
-      const mcCount = Math.min(
-        paper.questionCount > 0 ? paper.questionCount : stdAnswers.length,
-        stdAnswers.length,
+      const rawScore = Number(sub.redoScore ?? sub.score);
+      const answeredScope = this.getAnsweredScope(sub, paper);
+      const totalScore = sub.status === 0
+        ? answeredScope.totalPoints
+        : Number(sub.totalPoints || paper.totalPoints);
+      if (!Number.isFinite(rawScore) || !Number.isFinite(totalScore) || totalScore <= 0) continue;
+      const normalizedScore = this.clamp(
+        Math.round((rawScore / totalScore) * BASE_SCORE),
+        0,
+        MAX_SCORE,
       );
-      for (let i = 0; i < mcCount; i++) {
-        const stdItem = stdAnswers[i];
-        const stdAns =
-          stdItem && typeof stdItem === 'object'
-            ? String((stdItem as Record<string, unknown>)['answer'] ?? '')
-            : String(stdItem ?? '');
-        const studentAns = subAnswers[i];
-        const correct =
-          studentAns != null &&
-          String(studentAns).trim().toUpperCase() === stdAns.trim().toUpperCase();
-        const tags =
-          stdItem && typeof stdItem === 'object'
-            ? ((stdItem as Record<string, unknown>)['tags'] as Record<string, unknown>) || {}
-            : {};
-        accumulate(nodeIndex, weightCoef, correct, tags);
-      }
-
-      // Fill-in-blank / subjective questions
-      const fbConfig = paper.fillInBlankConfig;
-      for (let i = 0; i < fbConfig.length; i++) {
-        const item = fbConfig[i];
-        const detail = fbDetails[i];
-        const maxScore = Number(item?.['points'] ?? paper.singlePoints ?? 0) || 0;
-        let correct = false;
-        if (detail === true) correct = true;
-        else if (detail === false || detail == null) correct = false;
-        else if (typeof detail === 'number') {
-          correct = maxScore > 0 ? detail >= maxScore * 0.8 : detail > 0;
-        } else {
-          correct = false;
-        }
-        const tags = ((item?.['tags'] as Record<string, unknown>) || {}) as Record<string, unknown>;
-        accumulate(nodeIndex, weightCoef, correct, tags);
-      }
+      const date = this.fmtYmd(dt);
+      practicePoints.push({
+        index: 0,
+        startDate: date,
+        endDate: date,
+        label: this.fmtMMDD(dt),
+        score: normalizedScore,
+        rawScore: Number(rawScore.toFixed(2)),
+        totalScore: Number(totalScore.toFixed(2)),
+        type: paper.type,
+        typeLabel: this.getPracticeTypeLabel(paper.type),
+        name: paper.name,
+        weight: weightCoef,
+        questionCount: sub.status === 0
+          ? answeredScope.questionCount
+          : paper.questionCount + Math.max(paper.fillInBlankConfig.length, paper.fillInBlankPoints.length),
+        knowledgePoints: [],
+        timeMs: dt.getTime(),
+        regressionX: Math.floor((dt.getTime() - rangeStart.getTime()) / DAY_MS),
+      });
     }
 
-    // 5b. Incorporate school scores that fall within the prediction range.
+    // 5b. School scores are also individual points on their actual dates.
     const student = await this.prisma.student.findUnique({ where: { id: studentId } });
     const schoolScores = this.safeParseJson<unknown[]>(student?.schoolScores, []);
 
@@ -350,44 +304,35 @@ export class PredictionService {
       const totalScore = Number(item['totalScore'] ?? 0);
       if (!totalScore || score < 0) continue;
 
-      const ratio = Math.min(score / totalScore, 1);
-      const nodeIndex = Math.floor((dt.getTime() - rangeStart.getTime()) / (NODE_DAYS * DAY_MS));
-      this.accumulateSchoolScore(nodeIndex, ratio, nodeAgg);
+      const ratio = this.clamp(score / totalScore, 0, 1);
+      const date = this.fmtYmd(dt);
+      practicePoints.push({
+        index: 0,
+        startDate: date,
+        endDate: date,
+        label: this.fmtMMDD(dt),
+        score: Math.round(BASE_SCORE * ratio),
+        rawScore: Number(score.toFixed(2)),
+        totalScore: Number(totalScore.toFixed(2)),
+        type: 'schoolScore',
+        typeLabel: '校内成绩',
+        name: String(item['name'] || item['title'] || '校内成绩'),
+        weight: weights.schoolScore,
+        questionCount: 1,
+        knowledgePoints: [],
+        timeMs: dt.getTime(),
+        regressionX: Math.floor((dt.getTime() - rangeStart.getTime()) / DAY_MS),
+      });
       composition.schoolScore++;
     }
 
-    // 6. Compute node scores.
-    //    Each 7-day bucket is now scored purely from its weighted average accuracy
-    //    (in-class vs homework, difficulty and new/old weights are kept in the
-    //    per-question weight). Node score = BASE_SCORE * weighted accuracy.
-    const nodes: PredictionNode[] = [];
-    const sortedIndices = Array.from(nodeAgg.keys()).sort((a, b) => a - b);
-    for (const nodeIndex of sortedIndices) {
-      const agg = nodeAgg.get(nodeIndex)!;
-      if (agg.weightedTotal <= 0) continue;
+    practicePoints.sort((a, b) => a.timeMs - b.timeMs);
+    const nodes: PredictionNode[] = practicePoints.map(({ timeMs: _timeMs, regressionX: _x, ...point }, index) => ({
+      ...point,
+      index,
+    }));
 
-      const weightedAcc = agg.weightedCorrect / agg.weightedTotal;
-      const nodeScore =  Math.round((this.clamp(Math.round(BASE_SCORE * weightedAcc), 0, MAX_SCORE) * 0.8));
-      const totalQuestions = agg.questionCount;
-      const kpScores: KnowledgePointScore[] = [
-        { name: '综合', score: nodeScore, questionCount: totalQuestions },
-      ];
-
-      const start = new Date(rangeStart.getTime() + nodeIndex * NODE_DAYS * DAY_MS);
-      const end = new Date(
-        Math.min(start.getTime() + (NODE_DAYS - 1) * DAY_MS, rangeEnd.getTime()),
-      );
-      nodes.push({
-        index: nodeIndex,
-        startDate: this.fmtYmd(start),
-        endDate: this.fmtYmd(end),
-        label: `${this.fmtMMDD(start)} ~ ${this.fmtMMDD(end)}`,
-        score: nodeScore,
-        questionCount: totalQuestions,
-        knowledgePoints: kpScores,
-      });
-    }
-    // 7. Linear regression over node scores.
+    // 6. Weighted linear regression over individual practice scores and dates.
     const n = nodes.length;
     if (n === 0) {
       return {
@@ -412,7 +357,7 @@ export class PredictionService {
     if (n === 1) {
       const basePredictedScore = nodes[0].score;
       const predictedScore = hasCorrection
-        ? this.clamp(Math.round(basePredictedScore * 1.1), 0, MAX_SCORE)
+        ? this.clamp(Math.round(basePredictedScore * (1 + weights.correctionBonus)), 0, MAX_SCORE)
         : basePredictedScore;
       const correctionBonus = predictedScore - basePredictedScore;
       const confidence = this.computeConfidence(submissions);
@@ -435,21 +380,36 @@ export class PredictionService {
       };
     }
 
-    const ys = nodes.map((nd) => nd.score);
-    const xMean = (n - 1) / 2;
-    const yMean = ys.reduce((sum, y) => sum + y, 0) / n;
+    const regressionWeights = practicePoints.map((point) => Math.max(0, point.weight));
+    const weightSum = regressionWeights.reduce((sum, value) => sum + value, 0);
+    const effectiveWeights = weightSum > 0 ? regressionWeights : regressionWeights.map(() => 1);
+    const effectiveWeightSum = effectiveWeights.reduce((sum, value) => sum + value, 0);
+    const xMean = practicePoints.reduce(
+      (sum, point, index) => sum + point.regressionX * effectiveWeights[index],
+      0,
+    ) / effectiveWeightSum;
+    const yMean = practicePoints.reduce(
+      (sum, point, index) => sum + point.score * effectiveWeights[index],
+      0,
+    ) / effectiveWeightSum;
     let num = 0;
     let den = 0;
     for (let i = 0; i < n; i++) {
-      const dx = i - xMean;
-      num += dx * (ys[i] - yMean);
-      den += dx * dx;
+      const dx = practicePoints[i].regressionX - xMean;
+      num += effectiveWeights[i] * dx * (practicePoints[i].score - yMean);
+      den += effectiveWeights[i] * dx * dx;
     }
     const slope = den > 0 ? num / den : 0;
     const intercept = yMean - slope * xMean;
-    const basePredictedScore = this.clamp(Math.round(intercept + slope * n), 0, MAX_SCORE);
+    const uniqueDays = [...new Set(practicePoints.map((point) => point.regressionX))];
+    const dayGaps = uniqueDays.slice(1).map((day, index) => day - uniqueDays[index]).filter((gap) => gap > 0);
+    const forecastGap = dayGaps.length > 0
+      ? Math.max(1, Math.round(dayGaps.reduce((sum, gap) => sum + gap, 0) / dayGaps.length))
+      : 1;
+    const forecastX = Math.max(...practicePoints.map((point) => point.regressionX)) + forecastGap;
+    const basePredictedScore = this.clamp(Math.round(intercept + slope * forecastX), 0, MAX_SCORE);
     const predictedScore = hasCorrection
-      ? this.clamp(Math.round(basePredictedScore * 1.1), 0, MAX_SCORE)
+      ? this.clamp(Math.round(basePredictedScore * (1 + weights.correctionBonus)), 0, MAX_SCORE)
       : basePredictedScore;
     const correctionBonus = predictedScore - basePredictedScore;
     const trend = slope > 1 ? 'up' : slope < -1 ? 'down' : 'flat';
@@ -481,6 +441,76 @@ export class PredictionService {
     };
   }
 
+  private getAnsweredScope(
+    submission: { answers: string; options: string | null; totalPoints: number },
+    paper: ParsedPaper,
+  ): { totalPoints: number; questionCount: number } {
+    const answers = this.safeParseJson<unknown[]>(submission.answers, []);
+    let totalPoints = 0;
+    let questionCount = 0;
+
+    for (let index = 0; index < paper.questionCount; index++) {
+      const answer = answers[index];
+      const answered = answer !== null && answer !== undefined && String(answer).trim() !== '';
+      if (!answered) continue;
+      totalPoints += paper.questionTypes[index] === 'multiple' ? 6 : paper.singlePoints;
+      questionCount++;
+    }
+
+    const submissionOptions = this.safeParseJson<Record<string, unknown>>(submission.options, {});
+    const answeredFlags = Array.isArray(submissionOptions['fillInBlankAnswered'])
+      ? (submissionOptions['fillInBlankAnswered'] as unknown[])
+      : [];
+    const details = Array.isArray(submissionOptions['fillInBlankDetails'])
+      ? (submissionOptions['fillInBlankDetails'] as unknown[])
+      : [];
+    const fillCount = Math.max(
+      paper.fillInBlankConfig.length,
+      paper.fillInBlankPoints.length,
+      answeredFlags.length,
+      details.length,
+    );
+    const allChoicePoints = Array.from({ length: paper.questionCount }).reduce<number>(
+      (sum, _, index) => sum + (paper.questionTypes[index] === 'multiple' ? 6 : paper.singlePoints),
+      0,
+    );
+    const fallbackFillPoints = fillCount > 0
+      ? Math.max(0, paper.totalPoints - allChoicePoints) / fillCount
+      : 0;
+
+    for (let index = 0; index < fillCount; index++) {
+      const answered = answeredFlags.length > 0
+        ? answeredFlags[index] === true
+        : details[index] !== null && details[index] !== undefined && details[index] !== '';
+      if (!answered) continue;
+      const configuredPoints = Number(paper.fillInBlankConfig[index]?.['points']);
+      const optionPoints = Number(paper.fillInBlankPoints[index]);
+      totalPoints += configuredPoints > 0
+        ? configuredPoints
+        : optionPoints > 0
+          ? optionPoints
+          : fallbackFillPoints;
+      questionCount++;
+    }
+
+    return {
+      totalPoints: Number(totalPoints.toFixed(2)),
+      questionCount,
+    };
+  }
+
+  private getPracticeTypeLabel(type: string): string {
+    const labels: Record<string, string> = {
+      comprehensive: '综合考试',
+      test: '课上测试',
+      custom: '自定义题库',
+      homework: '课后作业',
+      correction: '改错任务',
+      schoolScore: '校内成绩',
+    };
+    return labels[type] || '练习';
+  }
+
   private buildSuggestions(
     composition: PredictionComposition,
     confidence: number,
@@ -502,7 +532,7 @@ export class PredictionService {
       suggestions.push('建议录入校内成绩，纳入预测参考。');
     }
     if (composition.correction < 5) {
-      suggestions.push('建议提交改错任务，可获得 10% 预测分数加成。');
+      suggestions.push(`建议提交改错任务，可获得 ${Math.round(composition.weights.correctionBonus * 100)}% 预测分数加成。`);
     }
     if (confidence < 30) {
       suggestions.push('建议保持规律作答，提高预测准确率。');
@@ -565,30 +595,6 @@ export class PredictionService {
     return this.clamp(base + regularityDelta + spanDelta, 1, 99);
   }
 
-  private extractTags(tags: Record<string, unknown>): {
-    difficulty: number;
-    typeCoef: number;
-    kp: string;
-  } {
-    let difficulty = 1.0;
-    let typeCoef = 1.0;
-    let kp = '';
-    for (const [k, v] of Object.entries(tags ?? {})) {
-      const keyStr = String(k).trim();
-      const valStr = String(v ?? '').trim();
-      if (!valStr) continue;
-      if (keyStr.includes('难度')) {
-        difficulty =
-          valStr.includes('简') ? DIFFICULTY_COEFF['简单题'] : valStr.includes('难') ? DIFFICULTY_COEFF['较难题'] : 1.0;
-      } else if (keyStr.includes('类型')) {
-        typeCoef = valStr.includes('旧') ? TYPE_COEFF['旧题'] : TYPE_COEFF['新题'];
-      } else if (!kp) {
-        kp = valStr;
-      }
-    }
-    return { difficulty, typeCoef, kp };
-  }
-
   private parseSchoolScoreDate(item: Record<string, unknown>): Date | null {
     if (typeof item['date'] === 'string' && DATE_RE.test(item['date'])) {
       return new Date(item['date'].replace(/-/g, '/'));
@@ -601,27 +607,16 @@ export class PredictionService {
     return null;
   }
 
-  private accumulateSchoolScore(
-    nodeIndex: number,
-    ratio: number,
-    nodeAgg: Map<number, NodeAgg>,
-  ) {
-    let agg = nodeAgg.get(nodeIndex);
-    if (!agg) {
-      agg = {
-        weightedCorrect: 0,
-        weightedTotal: 0,
-        questionCount: 0,
-        diffSum: 0,
-        diffCount: 0,
-        typeSum: 0,
-        typeCount: 0,
-      };
-      nodeAgg.set(nodeIndex, agg);
+  private async getPredictionWeights(): Promise<PredictionWeights> {
+    const raw = await this.configStore.get('predictionWeights');
+    const configured =
+      raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+    const normalized = { ...DEFAULT_PREDICTION_WEIGHTS };
+    for (const key of Object.keys(normalized) as (keyof PredictionWeights)[]) {
+      const value = Number(configured[key]);
+      if (Number.isFinite(value) && value >= 0 && value <= 1) normalized[key] = value;
     }
-    agg.weightedCorrect += SCHOOL_SCORE_WEIGHT * ratio;
-    agg.weightedTotal += SCHOOL_SCORE_WEIGHT;
-    agg.questionCount += 1;
+    return normalized;
   }
 
   private safeParseJson<T>(str: string | null | undefined, fallback: T): T {
