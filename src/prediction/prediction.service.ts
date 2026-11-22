@@ -77,6 +77,19 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 type PredictionWeights = PredictionComposition['weights'];
 
+interface PredictionConfidenceConfig {
+  baseScore: number;
+  growthPerDoubling: number;
+  baseCap: number;
+  veryRegularDelta: number;
+  regularDelta: number;
+  irregularDelta: number;
+  veryIrregularDelta: number;
+  sameTimeDelta: number;
+  minConfidence: number;
+  maxConfidence: number;
+}
+
 const DEFAULT_PREDICTION_WEIGHTS: PredictionWeights = {
   comprehensive: COMPREHENSIVE_WEIGHT,
   test: IN_CLASS_WEIGHT,
@@ -84,6 +97,19 @@ const DEFAULT_PREDICTION_WEIGHTS: PredictionWeights = {
   homework: HOMEWORK_WEIGHT,
   schoolScore: SCHOOL_SCORE_WEIGHT,
   correctionBonus: 0.1,
+};
+
+const DEFAULT_CONFIDENCE_CONFIG: PredictionConfidenceConfig = {
+  baseScore: 25,
+  growthPerDoubling: 20,
+  baseCap: 95,
+  veryRegularDelta: 10,
+  regularDelta: 5,
+  irregularDelta: -10,
+  veryIrregularDelta: -15,
+  sameTimeDelta: -20,
+  minConfidence: 1,
+  maxConfidence: 99,
 };
 
 interface ParsedPaper {
@@ -120,6 +146,7 @@ export class PredictionService {
         ? nextNodeLabelRaw.trim()
         : '预测';
     const weights = await this.getPredictionWeights();
+    const confidenceConfig = await this.getPredictionConfidenceConfig();
 
     let cfgStart: string | undefined;
     let cfgEnd: string | undefined;
@@ -142,7 +169,7 @@ export class PredictionService {
         basePredictedScore: null,
         correctionBonus: 0,
         predictedScoreRange: null,
-        confidence: 1,
+        confidence: confidenceConfig.minConfidence,
         nextNodeLabel,
         trend: 'flat',
         slope: 0,
@@ -343,7 +370,7 @@ export class PredictionService {
         basePredictedScore: null,
         correctionBonus: 0,
         predictedScoreRange: null,
-        confidence: 1,
+        confidence: confidenceConfig.minConfidence,
         nextNodeLabel,
         trend: 'flat',
         slope: 0,
@@ -388,7 +415,7 @@ export class PredictionService {
     const lastDailyScore = dailyNodes[dailyNodes.length - 1].averageScore;
     const scoreChange = lastDailyScore - firstDailyScore;
     const trend = scoreChange > 1 ? 'up' : scoreChange < -1 ? 'down' : 'flat';
-    const confidence = this.computeConfidence(submissions);
+    const confidence = this.computeConfidence(submissions, confidenceConfig);
 
     return {
       studentId,
@@ -519,17 +546,21 @@ export class PredictionService {
    * 计算预测成功率（1-99 的整数）。
    * 受两个因素影响：
    * 1. 作答次数：次数越多，样本越充足，成功率越高。
-   * 2. 作答间隔规律性：间隔越稳定、时间跨度越合理，成功率越高；
-   *    若作答过于集中或间隔波动极大，成功率会被压低。
+   * 2. 作答间隔规律性：间隔越稳定，成功率越高；
+   *    若间隔波动极大，成功率会被压低。
    */
   private computeConfidence(
     submissions: { submitTime?: string | Date | null }[],
+    config: PredictionConfidenceConfig,
   ): number {
     const total = submissions.length;
-    if (total === 0) return 1;
+    if (total === 0) return config.minConfidence;
 
     // 1. 基础成功率：随作答次数对数增长
-    const base = Math.min(95, Math.round(25 + 20 * Math.log2(total)));
+    const base = Math.min(
+      config.baseCap,
+      Math.round(config.baseScore + config.growthPerDoubling * Math.log2(total)),
+    );
 
     const times = submissions
       .map((s) => new Date(String(s.submitTime || '').replace(/-/g, '/')).getTime())
@@ -537,7 +568,7 @@ export class PredictionService {
       .sort((a, b) => a - b);
 
     if (times.length < 2) {
-      return this.clamp(base, 1, 99);
+      return this.clamp(base, config.minConfidence, config.maxConfidence);
     }
 
     // 2. 作答间隔规律性（变异系数 CV）
@@ -550,24 +581,22 @@ export class PredictionService {
     let regularityDelta = 0;
     if (mean <= 0) {
       // 所有作答时间完全相同，视为极不规律
-      regularityDelta = -20;
+      regularityDelta = config.sameTimeDelta;
     } else {
       const variance = intervals.reduce((sum, v) => sum + (v - mean) ** 2, 0) / intervals.length;
       const cv = Math.sqrt(variance) / mean;
-      if (cv < 0.3) regularityDelta = 10;
-      else if (cv < 0.6) regularityDelta = 5;
+      if (cv < 0.3) regularityDelta = config.veryRegularDelta;
+      else if (cv < 0.6) regularityDelta = config.regularDelta;
       else if (cv < 1.0) regularityDelta = 0;
-      else if (cv < 1.5) regularityDelta = -10;
-      else regularityDelta = -15;
+      else if (cv < 1.5) regularityDelta = config.irregularDelta;
+      else regularityDelta = config.veryIrregularDelta;
     }
 
-    // 3. 时间跨度：过于集中（<1 天）降低信心，跨度合理（>=14 天）略增信心
-    const spanDays = (times[times.length - 1] - times[0]) / DAY_MS;
-    let spanDelta = 0;
-    if (spanDays < 1) spanDelta = -10;
-    else if (spanDays >= 14) spanDelta = 5;
-
-    return this.clamp(base + regularityDelta + spanDelta, 1, 99);
+    return this.clamp(
+      base + regularityDelta,
+      config.minConfidence,
+      config.maxConfidence,
+    );
   }
 
   private parseSchoolScoreDate(item: Record<string, unknown>): Date | null {
@@ -590,6 +619,30 @@ export class PredictionService {
     for (const key of Object.keys(normalized) as (keyof PredictionWeights)[]) {
       const value = Number(configured[key]);
       if (Number.isFinite(value) && value >= 0 && value <= 1) normalized[key] = value;
+    }
+    return normalized;
+  }
+
+  private async getPredictionConfidenceConfig(): Promise<PredictionConfidenceConfig> {
+    const raw = await this.configStore.get('predictionConfidenceConfig');
+    const configured =
+      raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+    const normalized = { ...DEFAULT_CONFIDENCE_CONFIG };
+    const adjustmentKeys: (keyof PredictionConfidenceConfig)[] = [
+      'veryRegularDelta',
+      'regularDelta',
+      'irregularDelta',
+      'veryIrregularDelta',
+      'sameTimeDelta',
+    ];
+    for (const key of Object.keys(normalized) as (keyof PredictionConfidenceConfig)[]) {
+      const value = Number(configured[key]);
+      const min = adjustmentKeys.includes(key) ? -100 : 0;
+      if (Number.isFinite(value) && value >= min && value <= 100) normalized[key] = value;
+    }
+    if (normalized.minConfidence > normalized.maxConfidence) {
+      normalized.minConfidence = DEFAULT_CONFIDENCE_CONFIG.minConfidence;
+      normalized.maxConfidence = DEFAULT_CONFIDENCE_CONFIG.maxConfidence;
     }
     return normalized;
   }

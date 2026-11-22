@@ -517,7 +517,7 @@
                     <option value="test">课上测试</option>
                     <option value="homework">课后作业</option>
                     <option value="correction">改错任务</option>
-                    <option value="custom">自定义题库</option>
+                    <!-- <option value="custom">自定义题库</option> -->
                     <option value="comprehensive">综合考试</option>
                   </select>
                 </div>
@@ -563,11 +563,30 @@
               <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <label class="block"><span class="block text-xs font-bold text-gray-600 mb-1">综合考试</span><div class="relative"><input type="number" id="predictionComprehensiveWeightInput" min="0" max="100" step="1" class="w-full px-3 py-1.5 pr-8 border rounded-lg text-sm"><span class="absolute right-3 top-1.5 text-sm text-gray-400">%</span></div></label>
                 <label class="block"><span class="block text-xs font-bold text-gray-600 mb-1">课上测试</span><div class="relative"><input type="number" id="predictionTestWeightInput" min="0" max="100" step="1" class="w-full px-3 py-1.5 pr-8 border rounded-lg text-sm"><span class="absolute right-3 top-1.5 text-sm text-gray-400">%</span></div></label>
-                <label class="block"><span class="block text-xs font-bold text-gray-600 mb-1">自定义题库</span><div class="relative"><input type="number" id="predictionCustomWeightInput" min="0" max="100" step="1" class="w-full px-3 py-1.5 pr-8 border rounded-lg text-sm"><span class="absolute right-3 top-1.5 text-sm text-gray-400">%</span></div></label>
+                <!-- <label class="block"><span class="block text-xs font-bold text-gray-600 mb-1">自定义题库</span><div class="relative"><input type="number" id="predictionCustomWeightInput" min="0" max="100" step="1" class="w-full px-3 py-1.5 pr-8 border rounded-lg text-sm"><span class="absolute right-3 top-1.5 text-sm text-gray-400">%</span></div></label> -->
                 <label class="block"><span class="block text-xs font-bold text-gray-600 mb-1">课后作业</span><div class="relative"><input type="number" id="predictionHomeworkWeightInput" min="0" max="100" step="1" class="w-full px-3 py-1.5 pr-8 border rounded-lg text-sm"><span class="absolute right-3 top-1.5 text-sm text-gray-400">%</span></div></label>
                 <label class="block"><span class="block text-xs font-bold text-gray-600 mb-1">校内成绩</span><div class="relative"><input type="number" id="predictionSchoolScoreWeightInput" min="0" max="100" step="1" class="w-full px-3 py-1.5 pr-8 border rounded-lg text-sm"><span class="absolute right-3 top-1.5 text-sm text-gray-400">%</span></div></label>
                 <label class="block"><span class="block text-xs font-bold text-gray-600 mb-1">改错加成</span><div class="relative"><input type="number" id="predictionCorrectionBonusInput" min="0" max="100" step="1" class="w-full px-3 py-1.5 pr-8 border rounded-lg text-sm"><span class="absolute right-3 top-1.5 text-sm text-gray-400">%</span></div></label>
               </div>
+              <details class="mt-5 rounded-xl border border-blue-100 bg-blue-50/50 p-4" open>
+                <summary class="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-gray-800">
+                  <span><i class="fa fa-bullseye text-blue-600 mr-1.5"></i>预测准确率参数</span>
+                  <button type="button" id="resetPredictionConfidenceBtn" class="text-xs text-blue-600 hover:text-blue-800 font-medium" onclick="event.preventDefault();"><i class="fa fa-undo mr-1"></i>恢复默认</button>
+                </summary>
+                <p class="mt-2 text-xs text-gray-500">基础准确率 = 基础值 + 每翻倍增量 × log₂(作答次数)。规律性修正使用带正负号的百分点。</p>
+                <div class="mt-4 grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <label class="block"><span class="block text-xs font-bold text-gray-600 mb-1">基础值</span><input type="number" id="confidenceBaseScoreInput" min="0" max="100" step="1" class="w-full px-3 py-1.5 border rounded-lg text-sm"></label>
+                  <label class="block"><span class="block text-xs font-bold text-gray-600 mb-1">作答次数每翻倍增加</span><input type="number" id="confidenceGrowthInput" min="0" max="100" step="1" class="w-full px-3 py-1.5 border rounded-lg text-sm"></label>
+                  <label class="block"><span class="block text-xs font-bold text-gray-600 mb-1">基础值封顶</span><input type="number" id="confidenceBaseCapInput" min="0" max="100" step="1" class="w-full px-3 py-1.5 border rounded-lg text-sm"></label>
+                  <label class="block"><span class="block text-xs font-bold text-gray-600 mb-1">非常规律修正（CV&lt;0.3）</span><input type="number" id="confidenceVeryRegularInput" min="-100" max="100" step="1" class="w-full px-3 py-1.5 border rounded-lg text-sm"></label>
+                  <label class="block"><span class="block text-xs font-bold text-gray-600 mb-1">比较规律修正（CV&lt;0.6）</span><input type="number" id="confidenceRegularInput" min="-100" max="100" step="1" class="w-full px-3 py-1.5 border rounded-lg text-sm"></label>
+                  <label class="block"><span class="block text-xs font-bold text-gray-600 mb-1">较不规律修正（CV&lt;1.5）</span><input type="number" id="confidenceIrregularInput" min="-100" max="100" step="1" class="w-full px-3 py-1.5 border rounded-lg text-sm"></label>
+                  <label class="block"><span class="block text-xs font-bold text-gray-600 mb-1">非常不规律修正</span><input type="number" id="confidenceVeryIrregularInput" min="-100" max="100" step="1" class="w-full px-3 py-1.5 border rounded-lg text-sm"></label>
+                  <label class="block"><span class="block text-xs font-bold text-gray-600 mb-1">时间完全相同修正</span><input type="number" id="confidenceSameTimeInput" min="-100" max="100" step="1" class="w-full px-3 py-1.5 border rounded-lg text-sm"></label>
+                  <label class="block"><span class="block text-xs font-bold text-gray-600 mb-1">最终准确率下限</span><input type="number" id="confidenceMinInput" min="0" max="100" step="1" class="w-full px-3 py-1.5 border rounded-lg text-sm"></label>
+                  <label class="block"><span class="block text-xs font-bold text-gray-600 mb-1">最终准确率上限</span><input type="number" id="confidenceMaxInput" min="0" max="100" step="1" class="w-full px-3 py-1.5 border rounded-lg text-sm"></label>
+                </div>
+              </details>
               <!-- <div class="mt-4 rounded-lg border border-indigo-100 bg-indigo-50 p-4 text-xs leading-6 text-indigo-900">
                 <p class="font-bold"><i class="fa fa-calculator mr-1.5"></i>计算公式</p>
                 <p>单次练习折算分 = 实际得分 ÷ 练习满分 × 150 × 数据类型权重（每次练习独立显示，不再按 7 天求平均）。</p>
@@ -1447,6 +1466,7 @@
     let g_predictionRange = {}
     let g_predictionNextNodeLabel = '预测'
     let g_predictionWeights = {}
+    let g_predictionConfidenceConfig = {}
     async function init() {
        if (localStorage.getItem(ADMIN_SESSION_KEY) === 'true') { 
         showMainContent(); 
@@ -1507,6 +1527,7 @@
         fetch(`/api/v1/config/predictionNextNodeLabel`).then(r => r.json()).then(res => typeof res === 'string' ? res : ''),
         fetch(`/api/v1/papers/knowledge-tags/list`).then(r => r.json()).then(res => Array.isArray(res) ? res : []),
         fetch(`/api/v1/config/predictionWeights`).then(r => r.json()).then(res => res && typeof res === 'object' ? res : {}),
+        fetch(`/api/v1/config/predictionConfidenceConfig`).then(r => r.json()).then(res => res && typeof res === 'object' ? res : {}),
       ]).then(res => {
         g_papers = res[0]
         g_records = res[1]
@@ -1516,6 +1537,7 @@
         g_predictionNextNodeLabel = res[5] || '预测'
         g_knowledgePointTags = res[6]
         g_predictionWeights = res[7]
+        g_predictionConfidenceConfig = res[8]
 
         generateAnswerSelects();
       
@@ -5782,11 +5804,30 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
         schoolScore: 'predictionSchoolScoreWeightInput',
         correctionBonus: 'predictionCorrectionBonusInput'
       };
+      const defaultConfidenceConfig = {
+        baseScore: 25, growthPerDoubling: 20, baseCap: 95,
+        veryRegularDelta: 10, regularDelta: 5, irregularDelta: -10,
+        veryIrregularDelta: -15, sameTimeDelta: -20,
+        minConfidence: 1, maxConfidence: 99
+      };
+      const confidenceInputIds = {
+        baseScore: 'confidenceBaseScoreInput',
+        growthPerDoubling: 'confidenceGrowthInput',
+        baseCap: 'confidenceBaseCapInput',
+        veryRegularDelta: 'confidenceVeryRegularInput',
+        regularDelta: 'confidenceRegularInput',
+        irregularDelta: 'confidenceIrregularInput',
+        veryIrregularDelta: 'confidenceVeryIrregularInput',
+        sameTimeDelta: 'confidenceSameTimeInput',
+        minConfidence: 'confidenceMinInput',
+        maxConfidence: 'confidenceMaxInput'
+      };
       const startInput = document.getElementById('predictionStartDateInput');
       const endInput = document.getElementById('predictionEndDateInput');
       const labelInput = document.getElementById('predictionNextNodeLabelInput');
       const saveBtn = document.getElementById('savePredictionRangeBtn');
       const resetWeightsBtn = document.getElementById('resetPredictionWeightsBtn');
+      const resetConfidenceBtn = document.getElementById('resetPredictionConfidenceBtn');
       if (!startInput || !endInput || !saveBtn) return;
 
       const fillWeightInputs = (weights) => {
@@ -5797,12 +5838,22 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
           input.value = Math.round((Number.isFinite(value) ? value : defaultWeights[key]) * 100);
         });
       };
+      const fillConfidenceInputs = (config) => {
+        Object.entries(confidenceInputIds).forEach(([key, id]) => {
+          const input = document.getElementById(id);
+          if (!input) return;
+          const value = Number(config && config[key]);
+          input.value = Number.isFinite(value) ? value : defaultConfidenceConfig[key];
+        });
+      };
 
       startInput.value = g_predictionRange.startDate || '';
       endInput.value = g_predictionRange.endDate || '';
       if (labelInput) labelInput.value = g_predictionNextNodeLabel || '预测';
       fillWeightInputs(g_predictionWeights);
+      fillConfidenceInputs(g_predictionConfidenceConfig);
       if (resetWeightsBtn) resetWeightsBtn.addEventListener('click', () => fillWeightInputs(defaultWeights));
+      if (resetConfidenceBtn) resetConfidenceBtn.addEventListener('click', () => fillConfidenceInputs(defaultConfidenceConfig));
 
       saveBtn.addEventListener('click', async () => {
         const startDate = startInput.value;
@@ -5812,19 +5863,37 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
         const nextNodeLabel = labelInput ? (labelInput.value || '预测').trim() : '预测';
         const predictionWeights = {};
         for (const [key, id] of Object.entries(weightInputIds)) {
-          const value = Number(document.getElementById(id)?.value);
+          const input = document.getElementById(id);
+          const configuredValue = Number(g_predictionWeights[key]);
+          const value = input
+            ? Number(input.value)
+            : (Number.isFinite(configuredValue) ? configuredValue : defaultWeights[key]) * 100;
           if (!Number.isFinite(value) || value < 0 || value > 100) return alert('各项权重必须是 0～100 之间的数字！');
           predictionWeights[key] = value / 100;
         }
         if (Object.keys(weightInputIds).filter(key => key !== 'correctionBonus').every(key => predictionWeights[key] === 0)) {
           return alert('除改错加成外，至少需要有一项预测权重大于 0！');
         }
+        const predictionConfidenceConfig = {};
+        const adjustmentKeys = new Set(['veryRegularDelta', 'regularDelta', 'irregularDelta', 'veryIrregularDelta', 'sameTimeDelta']);
+        for (const [key, id] of Object.entries(confidenceInputIds)) {
+          const value = Number(document.getElementById(id)?.value);
+          const min = adjustmentKeys.has(key) ? -100 : 0;
+          if (!Number.isFinite(value) || value < min || value > 100) {
+            return alert('准确率参数超出允许范围，请检查输入！');
+          }
+          predictionConfidenceConfig[key] = value;
+        }
+        if (predictionConfidenceConfig.minConfidence > predictionConfidenceConfig.maxConfidence) {
+          return alert('最终准确率下限不能大于上限！');
+        }
         saveBtn.disabled = true;
         try {
           const requests = [
             ['/api/v1/config/predictionTimeRange', { startDate, endDate }],
             ['/api/v1/config/predictionNextNodeLabel', nextNodeLabel],
-            ['/api/v1/config/predictionWeights', predictionWeights]
+            ['/api/v1/config/predictionWeights', predictionWeights],
+            ['/api/v1/config/predictionConfidenceConfig', predictionConfidenceConfig]
           ].map(([url, value]) => fetch(url, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -5843,6 +5912,7 @@ const addStudentBtn = document.getElementById('addStudentBtn'), studentGradeFilt
         g_predictionRange = { startDate, endDate };
         g_predictionNextNodeLabel = nextNodeLabel;
         g_predictionWeights = predictionWeights;
+        g_predictionConfidenceConfig = predictionConfidenceConfig;
         await recalculateAllStudentsLearningPower();
         loadStudentPointsList();
         loadRankingData();
