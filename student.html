@@ -184,7 +184,7 @@
         </div>
         <div id="prediction-section" class="prediction-card hidden">
           <div class="prediction-head">
-            <span class="prediction-title"><i class="fa fa-line-chart mr-1"></i>阶段目标预测 <small class="opacity-70">（单次练习按150分制折算）</small></span>
+            <span class="prediction-title"><i class="fa fa-line-chart mr-1"></i>阶段目标预测 <small class="opacity-70">（按150分制及类型权重折算）</small></span>
             <span id="prediction-summary" class="prediction-badge"></span>
           </div>
           <figure id="predictionChart" class="prediction-figure"></figure>
@@ -948,7 +948,7 @@
    }
 
    function buildPredictionChart(nodes, predictedScore, predictedScoreRange, nextLabel, containerWidth, containerHeight) {
-     const scores = nodes.map(n => Math.round(n.score * n.weight) );
+     const scores = nodes.map(n => n.score);
      const n = nodes.length;
 
      const PAD_X = 80;

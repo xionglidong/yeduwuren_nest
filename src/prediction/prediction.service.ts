@@ -213,7 +213,7 @@ export class PredictionService {
     }
 
     // 5. Build one chart point per practice. No 7-day averaging is performed.
-    const practicePoints: Array<PredictionNode & { timeMs: number; regressionX: number }> = [];
+    const practicePoints: Array<PredictionNode & { timeMs: number }> = [];
     const composition: PredictionComposition = {
       test: 0,
       homework: 0,
@@ -264,7 +264,7 @@ export class PredictionService {
         : Number(sub.totalPoints || paper.totalPoints);
       if (!Number.isFinite(rawScore) || !Number.isFinite(totalScore) || totalScore <= 0) continue;
       const normalizedScore = this.clamp(
-        Math.round((rawScore / totalScore) * BASE_SCORE),
+        Math.round((rawScore / totalScore) * BASE_SCORE * weightCoef),
         0,
         MAX_SCORE,
       );
@@ -286,7 +286,6 @@ export class PredictionService {
           : paper.questionCount + Math.max(paper.fillInBlankConfig.length, paper.fillInBlankPoints.length),
         knowledgePoints: [],
         timeMs: dt.getTime(),
-        regressionX: Math.floor((dt.getTime() - rangeStart.getTime()) / DAY_MS),
       });
     }
 
@@ -311,7 +310,7 @@ export class PredictionService {
         startDate: date,
         endDate: date,
         label: this.fmtMMDD(dt),
-        score: Math.round(BASE_SCORE * ratio),
+        score: Math.round(BASE_SCORE * ratio * weights.schoolScore),
         rawScore: Number(score.toFixed(2)),
         totalScore: Number(totalScore.toFixed(2)),
         type: 'schoolScore',
@@ -321,18 +320,17 @@ export class PredictionService {
         questionCount: 1,
         knowledgePoints: [],
         timeMs: dt.getTime(),
-        regressionX: Math.floor((dt.getTime() - rangeStart.getTime()) / DAY_MS),
       });
       composition.schoolScore++;
     }
 
     practicePoints.sort((a, b) => a.timeMs - b.timeMs);
-    const nodes: PredictionNode[] = practicePoints.map(({ timeMs: _timeMs, regressionX: _x, ...point }, index) => ({
+    const nodes: PredictionNode[] = practicePoints.map(({ timeMs: _timeMs, ...point }, index) => ({
       ...point,
       index,
     }));
 
-    // 6. Weighted linear regression over individual practice scores and dates.
+    // 6. Group practices by date, then average the daily nodes.
     const n = nodes.length;
     if (n === 0) {
       return {
@@ -354,65 +352,42 @@ export class PredictionService {
         reason: 'no-data',
       };
     }
-    if (n === 1) {
-      const basePredictedScore = nodes[0].score;
-      const predictedScore = hasCorrection
-        ? this.clamp(Math.round(basePredictedScore * (1 + weights.correctionBonus)), 0, MAX_SCORE)
-        : basePredictedScore;
-      const correctionBonus = predictedScore - basePredictedScore;
-      const confidence = this.computeConfidence(submissions);
-      return {
-        studentId,
-        configured: true,
-        range: { startDate: s, endDate: e },
-        nodeDays: NODE_DAYS,
-        nodes,
-        predictedScore,
-        basePredictedScore,
-        correctionBonus,
-        predictedScoreRange: this.buildScoreRange(predictedScore),
-        confidence,
-        nextNodeLabel,
-        trend: 'flat',
-        slope: 0,
-        composition,
-        suggestions: this.buildSuggestions(composition, confidence),
-      };
+    const dailyGroups = new Map<string, { date: Date; scoreSum: number; count: number }>();
+    for (const point of practicePoints) {
+      const date = new Date(point.startDate.replace(/-/g, '/'));
+      date.setHours(0, 0, 0, 0);
+      const group = dailyGroups.get(point.startDate);
+      if (group) {
+        group.scoreSum += point.score;
+        group.count++;
+      } else {
+        dailyGroups.set(point.startDate, { date, scoreSum: point.score, count: 1 });
+      }
     }
 
-    const regressionWeights = practicePoints.map((point) => Math.max(0, point.weight));
-    const weightSum = regressionWeights.reduce((sum, value) => sum + value, 0);
-    const effectiveWeights = weightSum > 0 ? regressionWeights : regressionWeights.map(() => 1);
-    const effectiveWeightSum = effectiveWeights.reduce((sum, value) => sum + value, 0);
-    const xMean = practicePoints.reduce(
-      (sum, point, index) => sum + point.regressionX * effectiveWeights[index],
+    const dailyNodes = Array.from(dailyGroups.values())
+      .sort((a, b) => a.date.getTime() - b.date.getTime())
+      .map((group) => {
+        const averageScore = group.scoreSum / group.count;
+        return {
+          date: group.date,
+          averageScore,
+        };
+      });
+
+    const averageNodeScore = dailyNodes.reduce(
+      (sum, node) => sum + node.averageScore,
       0,
-    ) / effectiveWeightSum;
-    const yMean = practicePoints.reduce(
-      (sum, point, index) => sum + point.score * effectiveWeights[index],
-      0,
-    ) / effectiveWeightSum;
-    let num = 0;
-    let den = 0;
-    for (let i = 0; i < n; i++) {
-      const dx = practicePoints[i].regressionX - xMean;
-      num += effectiveWeights[i] * dx * (practicePoints[i].score - yMean);
-      den += effectiveWeights[i] * dx * dx;
-    }
-    const slope = den > 0 ? num / den : 0;
-    const intercept = yMean - slope * xMean;
-    const uniqueDays = [...new Set(practicePoints.map((point) => point.regressionX))];
-    const dayGaps = uniqueDays.slice(1).map((day, index) => day - uniqueDays[index]).filter((gap) => gap > 0);
-    const forecastGap = dayGaps.length > 0
-      ? Math.max(1, Math.round(dayGaps.reduce((sum, gap) => sum + gap, 0) / dayGaps.length))
-      : 1;
-    const forecastX = Math.max(...practicePoints.map((point) => point.regressionX)) + forecastGap;
-    const basePredictedScore = this.clamp(Math.round(intercept + slope * forecastX), 0, MAX_SCORE);
+    ) / dailyNodes.length;
+    const basePredictedScore = this.clamp(Math.round(averageNodeScore), 0, MAX_SCORE);
     const predictedScore = hasCorrection
       ? this.clamp(Math.round(basePredictedScore * (1 + weights.correctionBonus)), 0, MAX_SCORE)
       : basePredictedScore;
     const correctionBonus = predictedScore - basePredictedScore;
-    const trend = slope > 1 ? 'up' : slope < -1 ? 'down' : 'flat';
+    const firstDailyScore = dailyNodes[0].averageScore;
+    const lastDailyScore = dailyNodes[dailyNodes.length - 1].averageScore;
+    const scoreChange = lastDailyScore - firstDailyScore;
+    const trend = scoreChange > 1 ? 'up' : scoreChange < -1 ? 'down' : 'flat';
     const confidence = this.computeConfidence(submissions);
 
     return {
@@ -428,7 +403,7 @@ export class PredictionService {
       confidence,
       nextNodeLabel,
       trend,
-      slope: Number(slope.toFixed(4)),
+      slope: 0,
       composition,
       suggestions: this.buildSuggestions(composition, confidence),
     };
